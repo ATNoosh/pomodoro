@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pomodoro Todo App</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1><i class="fas fa-tomato"></i> Pomodoro Todo</h1>
+            <div class="header-controls">
+                <button id="settingsBtn" class="btn btn-icon" title="Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button id="historyBtn" class="btn btn-icon" title="History">
+                    <i class="fas fa-chart-line"></i>
+                </button>
+                <button id="exportBtn" class="btn btn-icon" title="Export Data">
+                    <i class="fas fa-download"></i>
+                </button>
+                <button id="importBtn" class="btn btn-icon" title="Import Data">
+                    <i class="fas fa-upload"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Pomodoro Timer Section -->
+            <section class="timer-section">
+                <div class="timer-container">
+                    <div class="timer-display">
+                        <div class="timer-circle">
+                            <svg class="timer-svg" viewBox="0 0 100 100">
+                                <circle class="timer-bg" cx="50" cy="50" r="45"></circle>
+                                <circle class="timer-progress" cx="50" cy="50" r="45" id="timerProgress"></circle>
+                            </svg>
+                            <div class="timer-text">
+                                <div class="timer-time" id="timerDisplay">25:00</div>
+                                <div class="timer-mode" id="timerMode">Work Time</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="timer-controls">
+                        <button id="startBtn" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Start
+                        </button>
+                        <button id="pauseBtn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-pause"></i> Pause
+                        </button>
+                        <button id="stopBtn" class="btn btn-danger" disabled>
+                            <i class="fas fa-stop"></i> Stop
+                        </button>
+                        <button id="skipBtn" class="btn btn-warning" disabled>
+                            <i class="fas fa-forward"></i> Skip
+                        </button>
+                    </div>
+
+                    <div class="timer-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Today's Pomodoros:</span>
+                            <span class="stat-value" id="todayPomodoros">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Completed Tasks:</span>
+                            <span class="stat-value" id="completedTasks">0</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Task Management Section -->
+            <section class="tasks-section">
+                <div class="tasks-header">
+                    <h2><i class="fas fa-tasks"></i> Tasks</h2>
+                    <button id="addTaskBtn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Task
+                    </button>
+                </div>
+
+                <div class="task-input-container" id="taskInputContainer" style="display: none;">
+                    <input type="text" id="taskInput" placeholder="Enter task description..." maxlength="200">
+                    <div class="task-input-controls">
+                        <button id="saveTaskBtn" class="btn btn-success">
+                            <i class="fas fa-check"></i> Save
+                        </button>
+                        <button id="cancelTaskBtn" class="btn btn-secondary">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
+                </div>
+
+                <div class="tasks-list" id="tasksList">
+                    <!-- Tasks will be dynamically added here -->
+                </div>
+            </section>
+        </main>
+
+        <!-- Settings Modal -->
+        <div id="settingsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-cog"></i> Settings</h3>
+                    <button class="modal-close" id="closeSettingsBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="setting-group">
+                        <label for="workTime">Work Time (minutes):</label>
+                        <input type="number" id="workTime" min="1" max="60" value="25">
+                    </div>
+                    <div class="setting-group">
+                        <label for="breakTime">Short Break (minutes):</label>
+                        <input type="number" id="breakTime" min="1" max="30" value="5">
+                    </div>
+                    <div class="setting-group">
+                        <label for="longBreakTime">Long Break (minutes):</label>
+                        <input type="number" id="longBreakTime" min="1" max="60" value="15">
+                    </div>
+                    <div class="setting-group">
+                        <label for="longBreakInterval">Long Break Every (pomodoros):</label>
+                        <input type="number" id="longBreakInterval" min="2" max="10" value="4">
+                    </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="notificationsEnabled" checked>
+                            Enable Notifications
+                        </label>
+                    </div>
+                    <div class="setting-group">
+                        <label>
+                            <input type="checkbox" id="autoStartBreaks" checked>
+                            Auto-start Breaks
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="saveSettingsBtn" class="btn btn-primary">Save Settings</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Modal -->
+        <div id="historyModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i class="fas fa-chart-line"></i> History</h3>
+                    <button class="modal-close" id="closeHistoryBtn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="history-filters">
+                        <select id="historyFilter">
+                            <option value="all">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                        </select>
+                    </div>
+                    <div class="history-stats">
+                        <div class="history-stat">
+                            <span class="stat-number" id="totalPomodoros">0</span>
+                            <span class="stat-label">Total Pomodoros</span>
+                        </div>
+                        <div class="history-stat">
+                            <span class="stat-number" id="totalTasks">0</span>
+                            <span class="stat-label">Completed Tasks</span>
+                        </div>
+                        <div class="history-stat">
+                            <span class="stat-number" id="totalTime">0h</span>
+                            <span class="stat-label">Total Focus Time</span>
+                        </div>
+                    </div>
+                    <div class="history-list" id="historyList">
+                        <!-- History items will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
