@@ -4,13 +4,15 @@
   "description": "A Pomodoro timer app with task management and history tracking",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
-    "start-safe": "set ELECTRON_DISABLE_GPU=1 && electron .",
-    "dev": "electron . --dev",
-    "dev-safe": "set ELECTRON_DISABLE_GPU=1 && electron . --dev",
-    "build": "electron-builder",
-    "dist": "electron-builder --publish=never",
-    "dist-portable": "set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --publish=never"
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "start": "npm run build && electron .",
+    "start-safe": "npm run build && set ELECTRON_DISABLE_GPU=1 && electron .",
+    "dev": "npm run build && electron . --dev",
+    "dev-safe": "npm run build && set ELECTRON_DISABLE_GPU=1 && electron . --dev",
+    "dev:watch": "tsc --watch & electron . --dev",
+    "dist": "npm run build && electron-builder --publish=never",
+    "dist-portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --publish=never"
   },
   "keywords": [
     "pomodoro",
@@ -22,8 +24,11 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
+    "@types/node": "^24.5.2",
     "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
+    "electron-builder": "^24.6.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   },
   "build": {
     "appId": "com.yourname.pomodoro-todo-app",
