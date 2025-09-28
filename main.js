@@ -2,6 +2,10 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Set environment variables to prevent GPU errors
+process.env.ELECTRON_DISABLE_GPU = '1';
+process.env.ELECTRON_DISABLE_GPU_SANDBOX = '1';
+
 // Keep a global reference of the window object
 let mainWindow;
 
@@ -16,7 +20,8 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       enableRemoteModule: false,
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      hardwareAcceleration: false
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     titleBarStyle: 'default',
@@ -41,6 +46,9 @@ function createWindow() {
     mainWindow = null;
   });
 }
+
+// Disable GPU acceleration to prevent GPU errors
+app.disableHardwareAcceleration();
 
 // App event listeners
 app.whenReady().then(createWindow);

@@ -524,6 +524,45 @@ body {
     transform: scale(1.2);
 }
 
+/* Google Sheets Integration Styles */
+.setting-section {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid #e0e0e0;
+}
+
+.setting-section h4 {
+    color: #667eea;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.setting-group input[type="url"],
+.setting-group input[type="password"],
+.setting-group input[type="text"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    transition: border-color 0.3s ease;
+}
+
+.setting-group input[type="url"]:focus,
+.setting-group input[type="password"]:focus,
+.setting-group input[type="text"]:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+.setting-group .btn {
+    margin-right: 0.5rem;
+    margin-top: 0.5rem;
+}
+
 /* History Styles */
 .history-filters {
     margin-bottom: 1.5rem;

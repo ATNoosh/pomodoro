@@ -19,7 +19,8 @@ class PomodoroApp {
                 longBreakTime: 15,
                 longBreakInterval: 4,
                 notificationsEnabled: true,
-                autoStartBreaks: true
+                autoStartBreaks: true,
+                
             }
         };
         
@@ -29,6 +30,7 @@ class PomodoroApp {
     async init() {
         await this.loadData();
         this.setupEventListeners();
+        this.setupTimer();
         this.updateUI();
         this.updateStats();
         this.requestNotificationPermission();
@@ -48,10 +50,14 @@ class PomodoroApp {
     async saveData() {
         try {
             await window.electronAPI.saveData(this.data);
+            
+            
         } catch (error) {
             console.error('Error saving data:', error);
         }
     }
+    
+    
     
     applySettings() {
         const settings = this.data.settings;
@@ -76,6 +82,7 @@ class PomodoroApp {
             
             if (this.currentTime === 0) {
                 this.setupTimer();
+                this.updateTimerDisplay();
             }
             
             this.timer = setInterval(() => {
@@ -544,6 +551,8 @@ class PomodoroApp {
             this.importData();
         });
         
+        
+        
         // Modal close on outside click
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
@@ -617,6 +626,65 @@ class PomodoroApp {
             }
         }
     }
+    
+    
+    
+    convertToCSV(data) {
+        if (!data || data.length === 0) return '';
+        
+        // Get headers
+        const headers = data[0];
+        const csvContent = [
+            headers.join(','),
+            ...data.slice(1).map(row => 
+                row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(',')
+            )
+        ].join('\n');
+        
+        return csvContent;
+    }
+    
+    prepareDataForGoogleSheets() {
+        const headers = [
+            'Type', 'Date', 'Time', 'Duration (minutes)', 'Pomodoro Count', 'Task', 'Status'
+        ];
+        
+        const rows = [headers];
+        
+        // Add history data
+        this.data.history.forEach(item => {
+            const date = new Date(item.completedAt);
+            const row = [
+                item.type === 'work' ? 'Pomodoro' : 'Break',
+                date.toLocaleDateString(),
+                date.toLocaleTimeString(),
+                Math.floor(item.duration / 60),
+                item.pomodoroCount || '',
+                '', // Task will be filled from tasks data
+                'Completed'
+            ];
+            rows.push(row);
+        });
+        
+        // Add tasks data
+        this.data.tasks.forEach(task => {
+            const date = new Date(task.createdAt);
+            const row = [
+                'Task',
+                date.toLocaleDateString(),
+                date.toLocaleTimeString(),
+                '',
+                '',
+                task.text,
+                task.completed ? 'Completed' : 'Pending'
+            ];
+            rows.push(row);
+        });
+        
+        return rows;
+    }
+    
+    // Google Sheets API functions removed - using CSV export instead
     
     // Data Export/Import
     async exportData() {
