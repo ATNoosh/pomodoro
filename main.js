@@ -71,10 +71,14 @@ const dataPath = path.join(app.getPath('userData'), 'pomodoro-data.json');
 // Load data from file
 ipcMain.handle('load-data', async () => {
   try {
+    console.log('Loading data from:', dataPath);
     if (fs.existsSync(dataPath)) {
       const data = fs.readFileSync(dataPath, 'utf8');
-      return JSON.parse(data);
+      const parsedData = JSON.parse(data);
+      console.log('Loaded data from file:', parsedData);
+      return parsedData;
     }
+    console.log('Data file does not exist, returning default data');
     return { tasks: [], history: [], settings: { workTime: 25, breakTime: 5, longBreakTime: 15 } };
   } catch (error) {
     console.error('Error loading data:', error);

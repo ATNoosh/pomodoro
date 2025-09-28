@@ -9,6 +9,7 @@ class PomodoroApp {
         this.currentMode = 'work'; // work, break, long-break
         this.pomodoroCount = 0;
         this.longBreakInterval = 4;
+        this.selectedTaskId = null; // Track selected task
         
         this.data = {
             tasks: [],
@@ -28,19 +29,40 @@ class PomodoroApp {
     }
     
     async init() {
+        console.log('App initializing...');
         await this.loadData();
+        console.log('Data loaded, setting up UI...');
         this.setupEventListeners();
         this.setupTimer();
-        this.updateUI();
-        this.updateStats();
+        
+        // Wait for DOM to be fully ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                this.updateUI();
+                this.updateStats();
+            });
+        } else {
+            this.updateUI();
+            this.updateStats();
+        }
+        
         this.requestNotificationPermission();
+        
+        // Ensure tasks are rendered after everything is loaded
+        setTimeout(() => {
+            console.log('Final renderTasks call...');
+            this.renderTasks();
+        }, 200);
     }
     
     // Data Management
     async loadData() {
         try {
             const loadedData = await window.electronAPI.loadData();
+            console.log('Loaded data:', loadedData);
             this.data = { ...this.data, ...loadedData };
+            console.log('Final data after merge:', this.data);
+            console.log('Tasks count:', this.data.tasks ? this.data.tasks.length : 0);
             this.applySettings();
         } catch (error) {
             console.error('Error loading data:', error);
@@ -209,7 +231,7 @@ class PomodoroApp {
         progressCircle.style.strokeDashoffset = 283 - progress;
         
         // Update progress color based on mode
-        progressCircle.className = `timer-progress ${this.currentMode}`;
+        progressCircle.setAttribute('class', `timer-progress ${this.currentMode}`);
     }
     
     updateTimerButtons() {
@@ -284,17 +306,32 @@ class PomodoroApp {
     
     renderTasks() {
         const tasksList = document.getElementById('tasksList');
+        if (!tasksList) {
+            console.error('tasksList element not found');
+            return;
+        }
+        
+        console.log('renderTasks called, tasks count:', this.data.tasks ? this.data.tasks.length : 0);
+        console.log('tasks data:', this.data.tasks);
+        
         tasksList.innerHTML = '';
         
-        this.data.tasks.forEach(task => {
-            const taskElement = this.createTaskElement(task);
-            tasksList.appendChild(taskElement);
-        });
+        if (this.data.tasks && this.data.tasks.length > 0) {
+            this.data.tasks.forEach(task => {
+                const taskElement = this.createTaskElement(task);
+                tasksList.appendChild(taskElement);
+            });
+            console.log('Tasks rendered successfully');
+        } else {
+            console.log('No tasks to render');
+        }
     }
     
     createTaskElement(task) {
         const div = document.createElement('div');
-        div.className = `task-item ${task.completed ? 'completed' : ''}`;
+        div.className = `task-item ${task.completed ? 'completed' : ''} ${this.selectedTaskId === task.id ? 'selected' : ''}`;
+        div.dataset.id = task.id;
+        div.tabIndex = 0; // Make focusable
         div.innerHTML = `
             <div class="task-checkbox ${task.completed ? 'checked' : ''}" data-id="${task.id}"></div>
             <div class="task-text">${this.escapeHtml(task.text)}</div>
@@ -473,6 +510,12 @@ class PomodoroApp {
             this.skipTimer();
         });
         
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            console.log('Key pressed:', e.key);
+            this.handleKeyboardShortcuts(e);
+        });
+        
         // Task management
         document.getElementById('addTaskBtn').addEventListener('click', () => {
             this.showTaskInput();
@@ -498,11 +541,16 @@ class PomodoroApp {
         
         // Task list events (delegated)
         document.getElementById('tasksList').addEventListener('click', (e) => {
+            const taskItem = e.target.closest('.task-item');
             const checkbox = e.target.closest('.task-checkbox');
             const editBtn = e.target.closest('.edit-btn');
             const deleteBtn = e.target.closest('.delete-btn');
             
-            if (checkbox) {
+            if (taskItem && !checkbox && !editBtn && !deleteBtn) {
+                // Select task when clicking on task item (not on buttons)
+                const id = parseInt(taskItem.dataset.id);
+                this.selectTask(id);
+            } else if (checkbox) {
                 const id = parseInt(checkbox.dataset.id);
                 this.toggleTask(id);
             } else if (editBtn) {
@@ -551,6 +599,14 @@ class PomodoroApp {
             this.importData();
         });
         
+        document.getElementById('helpBtn').addEventListener('click', () => {
+            this.showHelpModal();
+        });
+        
+        document.getElementById('closeHelpBtn').addEventListener('click', () => {
+            this.hideHelpModal();
+        });
+        
         
         
         // Modal close on outside click
@@ -562,12 +618,131 @@ class PomodoroApp {
         });
     }
     
+    // Keyboard Shortcuts
+    handleKeyboardShortcuts(e) {
+        // Prevent shortcuts when typing in input fields
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            return;
+        }
+        
+        // Timer controls
+        if (e.key === ' ' || e.key === 'Spacebar') {
+            e.preventDefault();
+            if (this.isPaused) {
+                this.resumeTimer();
+            } else if (this.isRunning) {
+                this.pauseTimer();
+            } else {
+                this.startTimer();
+            }
+        }
+        
+        if (e.key === 's' || e.key === 'S') {
+            e.preventDefault();
+            this.stopTimer();
+        }
+        
+        if (e.key === 'k' || e.key === 'K') {
+            e.preventDefault();
+            this.skipTimer();
+        }
+        
+        // Task management
+        if (e.key === 'n' || e.key === 'N') {
+            console.log('N key pressed, showing task input');
+            e.preventDefault();
+            this.showTaskInput();
+        }
+        
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            this.hideTaskInput();
+            this.hideSettingsModal();
+            this.hideHistoryModal();
+            this.hideHelpModal();
+        }
+        
+        // Cancel task input with Ctrl+X
+        if (e.ctrlKey && e.key === 'x') {
+            const container = document.getElementById('taskInputContainer');
+            if (container && container.style.display === 'block') {
+                console.log('Ctrl+X pressed, hiding task input');
+                e.preventDefault();
+                this.hideTaskInput();
+            }
+        }
+        
+        // Settings and modals
+        if (e.ctrlKey && e.key === ',') {
+            e.preventDefault();
+            this.showSettingsModal();
+        }
+        
+        if (e.key === 'h' || e.key === 'H') {
+            e.preventDefault();
+            this.showHistoryModal();
+        }
+        
+        if (e.key === '?' || e.key === '/') {
+            e.preventDefault();
+            this.showHelpModal();
+        }
+        
+        // Export/Import
+        if (e.ctrlKey && e.key === 'e') {
+            e.preventDefault();
+            this.exportData();
+        }
+        
+        if (e.ctrlKey && e.key === 'i') {
+            e.preventDefault();
+            this.importData();
+        }
+        
+        // Task navigation with arrow keys
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.navigateTasks(e.key === 'ArrowUp' ? -1 : 1);
+        }
+        
+        // Task actions (when task is selected)
+        if (e.key === 'Enter' && this.selectedTaskId) {
+            e.preventDefault();
+            this.toggleTask(this.selectedTaskId);
+        }
+        
+        if (e.key === 'Delete' && this.selectedTaskId) {
+            e.preventDefault();
+            if (confirm('Are you sure you want to delete this task?')) {
+                this.deleteTask(this.selectedTaskId);
+            }
+        }
+    }
+    
     // Modal Functions
     showTaskInput() {
+        console.log('showTaskInput called');
         const container = document.getElementById('taskInputContainer');
         const input = document.getElementById('taskInput');
+        
+        if (!container || !input) {
+            console.error('Task input elements not found');
+            return;
+        }
+        
+        // Ensure input is enabled and focusable
+        input.disabled = false;
+        input.readOnly = false;
+        input.style.pointerEvents = 'auto';
+        input.value = '';
+        
         container.style.display = 'block';
-        input.focus();
+        
+        // Use setTimeout to ensure DOM is updated before focusing
+        setTimeout(() => {
+            input.focus();
+            console.log('Task input focused');
+        }, 50);
     }
     
     hideTaskInput() {
@@ -575,6 +750,11 @@ class PomodoroApp {
         const input = document.getElementById('taskInput');
         container.style.display = 'none';
         input.value = '';
+        
+        // Ensure input is re-enabled and focusable
+        input.disabled = false;
+        input.readOnly = false;
+        input.style.pointerEvents = 'auto';
     }
     
     showSettingsModal() {
@@ -593,6 +773,40 @@ class PomodoroApp {
     
     hideHistoryModal() {
         document.getElementById('historyModal').classList.remove('show');
+    }
+    
+    showHelpModal() {
+        document.getElementById('helpModal').classList.add('show');
+    }
+    
+    hideHelpModal() {
+        document.getElementById('helpModal').classList.remove('show');
+    }
+    
+    // Task Selection Functions
+    selectTask(id) {
+        this.selectedTaskId = id;
+        this.renderTasks(); // Re-render to update selection
+    }
+    
+    navigateTasks(direction) {
+        if (this.data.tasks.length === 0) return;
+        
+        let currentIndex = -1;
+        if (this.selectedTaskId) {
+            currentIndex = this.data.tasks.findIndex(task => task.id === this.selectedTaskId);
+        }
+        
+        let newIndex = currentIndex + direction;
+        
+        // Wrap around
+        if (newIndex < 0) {
+            newIndex = this.data.tasks.length - 1;
+        } else if (newIndex >= this.data.tasks.length) {
+            newIndex = 0;
+        }
+        
+        this.selectTask(this.data.tasks[newIndex].id);
     }
     
     saveSettings() {

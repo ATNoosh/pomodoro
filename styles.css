@@ -1,3 +1,14 @@
+/* Custom Fonts */
+@font-face {
+    font-family: 'IranSans';
+    src: url('./fonts/iranSans.eot');
+    src: url('./fonts/iranSans.eot?#iefix') format('embedded-opentype'),
+         url('./fonts/iranSans.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Reset and Base Styles */
 * {
     margin: 0;
@@ -262,6 +273,17 @@ body {
     color: #666;
 }
 
+.task-item.selected {
+    background: #e3f2fd;
+    border: 2px solid #2196f3;
+    box-shadow: 0 4px 20px rgba(33, 150, 243, 0.3);
+}
+
+.task-item.selected:hover {
+    background: #e3f2fd;
+    transform: none;
+}
+
 .task-checkbox {
     width: 20px;
     height: 20px;
@@ -290,6 +312,7 @@ body {
     flex: 1;
     font-size: 1rem;
     line-height: 1.4;
+    font-family: 'IranSans', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .task-actions {
@@ -405,6 +428,51 @@ body {
 .btn-icon:hover {
     background: rgba(255, 255, 255, 0.3);
     transform: translateY(-1px);
+}
+
+/* Keyboard Shortcuts Styles */
+.shortcuts-section {
+    margin-bottom: 1.5rem;
+}
+
+.shortcuts-section h4 {
+    color: #667eea;
+    margin-bottom: 0.75rem;
+    font-size: 1.1rem;
+    border-bottom: 2px solid #667eea;
+    padding-bottom: 0.25rem;
+}
+
+.shortcut-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: rgba(102, 126, 234, 0.1);
+    border-radius: 8px;
+    transition: background-color 0.2s;
+}
+
+.shortcut-item:hover {
+    background: rgba(102, 126, 234, 0.2);
+}
+
+.shortcut-item kbd {
+    background: #667eea;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    margin-right: 1rem;
+    min-width: 60px;
+    text-align: center;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.shortcut-item span {
+    flex: 1;
+    font-weight: 500;
 }
 
 /* Modal Styles */

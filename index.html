@@ -25,6 +25,9 @@
                 <button id="importBtn" class="btn btn-icon" title="Import Data">
                     <i class="fas fa-upload"></i>
                 </button>
+                <button id="helpBtn" class="btn btn-icon" title="Keyboard Shortcuts">
+                    <i class="fas fa-keyboard"></i>
+                </button>
             </div>
         </header>
 
@@ -181,6 +184,89 @@
                     </div>
                     <div class="history-list" id="historyList">
                         <!-- History items will be dynamically added here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal" id="helpModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-keyboard"></i> Keyboard Shortcuts</h3>
+                <button class="close-btn" id="closeHelpBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="shortcuts-section">
+                    <h4>Timer Controls</h4>
+                    <div class="shortcut-item">
+                        <kbd>Space</kbd>
+                        <span>Start/Pause/Resume Timer</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>S</kbd>
+                        <span>Stop Timer</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>K</kbd>
+                        <span>Skip Current Session</span>
+                    </div>
+                </div>
+                
+                <div class="shortcuts-section">
+                    <h4>Task Management</h4>
+                    <div class="shortcut-item">
+                        <kbd>N</kbd>
+                        <span>Add New Task</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>X</kbd>
+                        <span>Cancel Task Input</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>↑</kbd> / <kbd>↓</kbd>
+                        <span>Navigate Tasks</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Enter</kbd>
+                        <span>Toggle Task (when selected)</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Delete</kbd>
+                        <span>Delete Task (when selected)</span>
+                    </div>
+                </div>
+                
+                <div class="shortcuts-section">
+                    <h4>Navigation</h4>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>,</kbd>
+                        <span>Open Settings</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>H</kbd>
+                        <span>Show History</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>?</kbd>
+                        <span>Show Help (this window)</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Escape</kbd>
+                        <span>Close Modals</span>
+                    </div>
+                </div>
+                
+                <div class="shortcuts-section">
+                    <h4>Data Management</h4>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>E</kbd>
+                        <span>Export Data</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl</kbd> + <kbd>I</kbd>
+                        <span>Import Data</span>
                     </div>
                 </div>
             </div>
