@@ -114,6 +114,19 @@ class PomodoroApp {
             this.dataManager.importData();
         });
         
+        // Window controls
+        document.getElementById('minimizeBtn').addEventListener('click', () => {
+            this.minimizeWindow();
+        });
+        
+        document.getElementById('maximizeBtn').addEventListener('click', () => {
+            this.toggleMaximizeWindow();
+        });
+        
+        document.getElementById('closeBtn').addEventListener('click', () => {
+            this.closeWindow();
+        });
+        
         // Setup modal event listeners
         this.modals.setupModalEventListeners();
     }
@@ -147,6 +160,25 @@ class PomodoroApp {
         this.timer.stop();
         this.timer.setup();
         this.updateUI();
+    }
+    
+    // Window control methods
+    minimizeWindow() {
+        if (window.electronAPI && window.electronAPI.minimizeWindow) {
+            window.electronAPI.minimizeWindow();
+        }
+    }
+    
+    toggleMaximizeWindow() {
+        if (window.electronAPI && window.electronAPI.toggleMaximizeWindow) {
+            window.electronAPI.toggleMaximizeWindow();
+        }
+    }
+    
+    closeWindow() {
+        if (window.electronAPI && window.electronAPI.closeWindow) {
+            window.electronAPI.closeWindow();
+        }
     }
 }
 

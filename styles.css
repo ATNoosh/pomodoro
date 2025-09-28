@@ -40,6 +40,47 @@ body {
     align-items: center;
     box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
     border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    -webkit-app-region: drag; /* Allow dragging the window */
+}
+
+/* Window Controls */
+.window-controls {
+    display: flex;
+    gap: 0.5rem;
+    -webkit-app-region: no-drag; /* Disable dragging for buttons */
+}
+
+.window-control-btn {
+    width: 30px;
+    height: 30px;
+    border: none;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 12px;
+    color: #666;
+}
+
+.window-control-btn:hover {
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.window-control-btn.minimize:hover {
+    background-color: #ffa500;
+    color: white;
+}
+
+.window-control-btn.maximize:hover {
+    background-color: #00a000;
+    color: white;
+}
+
+.window-control-btn.close:hover {
+    background-color: #ff4444;
+    color: white;
 }
 
 .app-header h1 {

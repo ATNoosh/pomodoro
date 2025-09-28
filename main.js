@@ -16,6 +16,7 @@ function createWindow() {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    frame: false, // Remove the title bar
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -24,7 +25,6 @@ function createWindow() {
       hardwareAcceleration: false
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
-    titleBarStyle: 'default',
     show: false
   });
 
@@ -168,4 +168,27 @@ ipcMain.handle('show-notification', async (event, { title, body, icon }) => {
     return true;
   }
   return false;
+});
+
+// Window control handlers
+ipcMain.handle('minimize-window', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.handle('toggle-maximize-window', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.handle('close-window', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
 });

@@ -13,6 +13,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   requestNotificationPermission: () => ipcRenderer.invoke('request-notification-permission'),
   showNotification: (options) => ipcRenderer.invoke('show-notification', options),
   
+  // Window controls
+  minimizeWindow: () => ipcRenderer.invoke('minimize-window'),
+  toggleMaximizeWindow: () => ipcRenderer.invoke('toggle-maximize-window'),
+  closeWindow: () => ipcRenderer.invoke('close-window'),
+  
   // Platform info
   platform: process.platform,
   
