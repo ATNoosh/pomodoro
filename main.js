@@ -1,6 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
+let Database;
+try { Database = require('better-sqlite3'); } catch (_) { Database = null; }
 
 // Set environment variables to prevent GPU errors
 process.env.ELECTRON_DISABLE_GPU = '1';
@@ -8,6 +10,7 @@ process.env.ELECTRON_DISABLE_GPU_SANDBOX = '1';
 
 // Keep a global reference of the window object
 let mainWindow;
+let overlayWindow;
 
 function createWindow() {
   // Create the browser window
@@ -65,30 +68,223 @@ app.on('activate', () => {
   }
 });
 
+// Overlay window management
+function createOverlayWindow() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    return overlayWindow;
+  }
+  overlayWindow = new BrowserWindow({
+    width: 160,
+    height: 160,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    resizable: false,
+    movable: true,
+    skipTaskbar: true,
+    focusable: true,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+      backgroundThrottling: false
+    }
+  });
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver');
+  overlayWindow.setVisibleOnAllWorkspaces(true);
+  overlayWindow.loadFile('overlay.html');
+  try {
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    const winBounds = overlayWindow.getBounds();
+    overlayWindow.setPosition(width - winBounds.width - 20, height - winBounds.height - 60);
+  } catch {}
+  overlayWindow.once('ready-to-show', () => {
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.showInactive();
+    }
+  });
+  return overlayWindow;
+}
+
+ipcMain.handle('toggle-overlay', () => {
+  console.log('toggle-overlay received');
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (overlayWindow.isVisible()) {
+      overlayWindow.hide();
+    } else {
+      overlayWindow.showInactive();
+    }
+    return;
+  }
+  const win = createOverlayWindow();
+  if (win && !win.isDestroyed()) {
+    win.showInactive();
+  }
+});
+
+// Receive timer ticks from renderer and forward to overlay
+ipcMain.on('timer-tick', (_event, state) => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send('timer-update', state);
+  }
+});
+
 // IPC handlers for data persistence
-const dataPath = path.join(app.getPath('userData'), 'pomodoro-data.json');
+const userDataDir = app.getPath('userData');
+const dataPath = path.join(userDataDir, 'pomodoro-data.json');
+const dbPath = path.join(userDataDir, 'pomodoro.db');
+let db;
+
+function initDatabase() {
+  if (!Database) {
+    console.error('better-sqlite3 not installed');
+    return;
+  }
+  if (!fs.existsSync(userDataDir)) {
+    fs.mkdirSync(userDataDir, { recursive: true });
+  }
+  db = new Database(dbPath);
+  db.exec(`
+    PRAGMA journal_mode=WAL;
+    CREATE TABLE IF NOT EXISTS tasks(
+      id INTEGER PRIMARY KEY,
+      text TEXT NOT NULL,
+      completed INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL,
+      pomodoros INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS history(
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      taskId INTEGER,
+      startedAt TEXT,
+      endedAt TEXT,
+      mode TEXT
+    );
+    CREATE TABLE IF NOT EXISTS settings(
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+
+  // Migration from JSON if DB is empty
+  const countTasks = db.prepare('SELECT COUNT(1) AS c FROM tasks').get().c;
+  const countSettings = db.prepare('SELECT COUNT(1) AS c FROM settings').get().c;
+  if (countTasks === 0 && countSettings === 0 && fs.existsSync(dataPath)) {
+    try {
+      const json = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
+      const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
+      const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
+      const tx = db.transaction(() => {
+        if (Array.isArray(json.tasks)) {
+          for (const t of json.tasks) {
+            insertTask.run({
+              id: t.id,
+              text: t.text || '',
+              completed: t.completed ? 1 : 0,
+              createdAt: t.createdAt || new Date().toISOString(),
+              pomodoros: t.pomodoros || 0
+            });
+          }
+        }
+        const s = json.settings || {};
+        const defaults = { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false };
+        const merged = { ...defaults, ...s };
+        for (const [k, v] of Object.entries(merged)) {
+          insertSetting.run(k, JSON.stringify(v));
+        }
+        // history optional
+        if (Array.isArray(json.history)) {
+          const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
+          for (const h of json.history) {
+            insertHistory.run({
+              taskId: h.taskId ?? null,
+              startedAt: h.startedAt || null,
+              endedAt: h.endedAt || null,
+              mode: h.mode || null
+            });
+          }
+        }
+      });
+      tx();
+      console.log('Migrated data from JSON to SQLite');
+    } catch (e) {
+      console.error('Migration failed:', e);
+    }
+  }
+}
+
+app.whenReady().then(() => {
+  if (Database) initDatabase();
+});
 
 // Load data from file
 ipcMain.handle('load-data', async () => {
   try {
-    console.log('Loading data from:', dataPath);
+    if (db) {
+      const tasks = db.prepare('SELECT id, text, completed, createdAt, pomodoros FROM tasks ORDER BY createdAt ASC').all()
+        .map(t => ({ ...t, completed: !!t.completed }));
+      const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+      const settings = {};
+      for (const r of settingsRows) { settings[r.key] = JSON.parse(r.value); }
+      const defaults = { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false };
+      const mergedSettings = { ...defaults, ...settings };
+      const history = db.prepare('SELECT id, taskId, startedAt, endedAt, mode FROM history ORDER BY id DESC LIMIT 1000').all();
+      return { tasks, history, settings: mergedSettings };
+    }
+    // Fallback to JSON
     if (fs.existsSync(dataPath)) {
       const data = fs.readFileSync(dataPath, 'utf8');
-      const parsedData = JSON.parse(data);
-      console.log('Loaded data from file:', parsedData);
-      return parsedData;
+      return JSON.parse(data);
     }
-    console.log('Data file does not exist, returning default data');
-    return { tasks: [], history: [], settings: { workTime: 25, breakTime: 5, longBreakTime: 15 } };
+    return { tasks: [], history: [], settings: { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false } };
   } catch (error) {
     console.error('Error loading data:', error);
-    return { tasks: [], history: [], settings: { workTime: 25, breakTime: 5, longBreakTime: 15 } };
+    return { tasks: [], history: [], settings: { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false } };
   }
 });
 
 // Save data to file
 ipcMain.handle('save-data', async (event, data) => {
   try {
+    if (db) {
+      const tx = db.transaction(() => {
+        db.prepare('DELETE FROM tasks').run();
+        const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
+        for (const t of data.tasks || []) {
+          insertTask.run({
+            id: t.id,
+            text: t.text || '',
+            completed: t.completed ? 1 : 0,
+            createdAt: t.createdAt || new Date().toISOString(),
+            pomodoros: t.pomodoros || 0
+          });
+        }
+        // settings
+        db.prepare('DELETE FROM settings').run();
+        const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
+        const s = data.settings || {};
+        for (const [k, v] of Object.entries(s)) {
+          insertSetting.run(k, JSON.stringify(v));
+        }
+        // history: replace with incoming if provided
+        if (Array.isArray(data.history)) {
+          db.prepare('DELETE FROM history').run();
+          const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
+          for (const h of data.history) {
+            insertHistory.run({
+              taskId: h.taskId ?? null,
+              startedAt: h.startedAt || null,
+              endedAt: h.endedAt || null,
+              mode: h.mode || null
+            });
+          }
+        }
+      });
+      tx();
+      return true;
+    }
+    // fallback
     fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
     return true;
   } catch (error) {
@@ -101,18 +297,23 @@ ipcMain.handle('save-data', async (event, data) => {
 ipcMain.handle('export-data', async () => {
   try {
     const result = await dialog.showSaveDialog(mainWindow, {
-      title: 'Export Pomodoro Data',
-      defaultPath: 'pomodoro-data.json',
+      title: 'Export Pomodoro Database',
+      defaultPath: 'pomodoro.db',
       filters: [
-        { name: 'JSON Files', extensions: ['json'] },
+        { name: 'SQLite DB', extensions: ['db'] },
         { name: 'All Files', extensions: ['*'] }
       ]
     });
 
     if (!result.canceled && result.filePath) {
-      const data = fs.readFileSync(dataPath, 'utf8');
-      fs.writeFileSync(result.filePath, data);
-      return { success: true, path: result.filePath };
+      if (db && fs.existsSync(dbPath)) {
+        fs.copyFileSync(dbPath, result.filePath);
+        return { success: true, path: result.filePath };
+      }
+      // fallback JSON
+      const jsonPath = result.filePath.endsWith('.db') ? result.filePath + '.json' : result.filePath;
+      fs.writeFileSync(jsonPath, fs.existsSync(dataPath) ? fs.readFileSync(dataPath, 'utf8') : JSON.stringify({ tasks: [], history: [], settings: {} }, null, 2));
+      return { success: true, path: jsonPath };
     }
     return { success: false };
   } catch (error) {
@@ -125,8 +326,9 @@ ipcMain.handle('export-data', async () => {
 ipcMain.handle('import-data', async () => {
   try {
     const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Import Pomodoro Data',
+      title: 'Import Pomodoro Database or JSON',
       filters: [
+        { name: 'SQLite DB', extensions: ['db'] },
         { name: 'JSON Files', extensions: ['json'] },
         { name: 'All Files', extensions: ['*'] }
       ],
@@ -134,10 +336,54 @@ ipcMain.handle('import-data', async () => {
     });
 
     if (!result.canceled && result.filePaths.length > 0) {
-      const data = fs.readFileSync(result.filePaths[0], 'utf8');
-      const parsedData = JSON.parse(data);
-      fs.writeFileSync(dataPath, JSON.stringify(parsedData, null, 2));
-      return { success: true, data: parsedData };
+      const file = result.filePaths[0];
+      if (file.toLowerCase().endsWith('.db')) {
+        if (db) {
+          // Close current DB handle before replacing
+          try { db.close(); } catch {}
+          fs.copyFileSync(file, dbPath);
+          // Re-open
+          db = new Database(dbPath);
+          return { success: true };
+        } else {
+          // No DB, just copy
+          fs.copyFileSync(file, dbPath);
+          return { success: true };
+        }
+      } else {
+        // JSON import fallback: load and save into DB
+        const parsedData = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (db) {
+          const tx = db.transaction(() => {
+            db.prepare('DELETE FROM tasks').run();
+            db.prepare('DELETE FROM settings').run();
+            db.prepare('DELETE FROM history').run();
+            const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
+            for (const t of parsedData.tasks || []) {
+              insertTask.run({
+                id: t.id,
+                text: t.text || '',
+                completed: t.completed ? 1 : 0,
+                createdAt: t.createdAt || new Date().toISOString(),
+                pomodoros: t.pomodoros || 0
+              });
+            }
+            const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
+            const s = parsedData.settings || {};
+            for (const [k, v] of Object.entries(s)) insertSetting.run(k, JSON.stringify(v));
+            if (Array.isArray(parsedData.history)) {
+              const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
+              for (const h of parsedData.history) insertHistory.run({ taskId: h.taskId ?? null, startedAt: h.startedAt || null, endedAt: h.endedAt || null, mode: h.mode || null });
+            }
+          });
+          tx();
+          return { success: true };
+        } else {
+          // fallback write JSON
+          fs.writeFileSync(dataPath, JSON.stringify(parsedData, null, 2));
+          return { success: true };
+        }
+      }
     }
     return { success: false };
   } catch (error) {

@@ -166,6 +166,10 @@ export class PomodoroApp {
     // Export/Import
     const exportBtn = document.getElementById('exportBtn');
     const importBtn = document.getElementById('importBtn');
+    const overlayBtn = document.getElementById('overlayBtn');
+    const settingsBtn = document.getElementById('settingsBtn');
+    const historyBtn = document.getElementById('historyBtn');
+    const helpBtn = document.getElementById('helpBtn');
     
     console.log('Export button found:', !!exportBtn);
     console.log('Import button found:', !!importBtn);
@@ -181,6 +185,38 @@ export class PomodoroApp {
       importBtn.addEventListener('click', () => {
         console.log('Import button clicked!');
         this.dataManager.importData();
+      });
+    }
+    
+    if (overlayBtn) {
+      overlayBtn.addEventListener('click', () => {
+        console.log('Overlay button clicked!');
+        const api = (window as any).electronAPI;
+        if (api?.toggleOverlay) {
+          api.toggleOverlay();
+          try { api.timerTick?.(this.timer.getState()); } catch {}
+        }
+      });
+    }
+
+    if (settingsBtn) {
+      settingsBtn.addEventListener('click', () => {
+        console.log('Settings button clicked!');
+        this.modals.showSettings();
+      });
+    }
+
+    if (historyBtn) {
+      historyBtn.addEventListener('click', () => {
+        console.log('History button clicked!');
+        this.modals.showHistory();
+      });
+    }
+
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => {
+        console.log('Help button clicked!');
+        this.modals.showHelp();
       });
     }
     
@@ -265,4 +301,5 @@ export class PomodoroApp {
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   window.pomodoroApp = new PomodoroApp();
+  window.pomodoroApp.init();
 });

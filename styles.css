@@ -401,6 +401,7 @@ body {
     align-items: center;
     gap: 0.5rem;
     text-decoration: none;
+    -webkit-app-region: no-drag;
 }
 
 .btn:disabled {
@@ -464,6 +465,7 @@ body {
     color: #667eea;
     border-radius: 8px;
     font-size: 1.1rem;
+    -webkit-app-region: no-drag;
 }
 
 .btn-icon:hover {

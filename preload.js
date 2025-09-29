@@ -18,6 +18,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   toggleMaximizeWindow: () => ipcRenderer.invoke('toggle-maximize-window'),
   closeWindow: () => ipcRenderer.invoke('close-window'),
   
+  // Overlay and timer events
+  toggleOverlay: () => ipcRenderer.invoke('toggle-overlay'),
+  timerTick: (state) => ipcRenderer.send('timer-tick', state),
+  onTimerUpdate: (callback) => ipcRenderer.on('timer-update', (_e, state) => callback(state)),
+  
   // Platform info
   platform: process.platform,
   

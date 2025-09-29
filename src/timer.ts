@@ -17,6 +17,18 @@ export class Timer {
     this.app = app;
   }
   
+  // Emit timer state for overlay via preload-exposed API
+  private emitTick(): void {
+    try {
+      const api = (window as any).electronAPI;
+      if (api && typeof api.timerTick === 'function') {
+        api.timerTick(this.getState());
+      }
+    } catch {
+      // not in renderer context
+    }
+  }
+  
   // Timer control methods
   start(): void {
     if (!this.isRunning) {
@@ -26,6 +38,7 @@ export class Timer {
       if (this.currentTime === 0) {
         this.setup();
         this.updateDisplay();
+        this.emitTick();
       }
       
       this.timer = setInterval(() => {
@@ -33,6 +46,7 @@ export class Timer {
       }, 1000);
       
       this.updateButtons();
+      this.emitTick();
     }
   }
   
@@ -65,6 +79,7 @@ export class Timer {
     this.currentTime = 0;
     this.updateDisplay();
     this.updateButtons();
+    this.emitTick();
   }
   
   skip(): void {
@@ -90,12 +105,14 @@ export class Timer {
     
     this.currentTime = this.totalTime;
     this.updateDisplay();
+    this.emitTick();
   }
   
   // Timer tick - called every second
   private tick(): void {
     this.currentTime--;
     this.updateDisplay();
+    this.emitTick();
     
     if (this.currentTime <= 0) {
       this.complete();
@@ -137,6 +154,7 @@ export class Timer {
     
     this.setup();
     this.updateDisplay();
+    this.emitTick();
   }
   
   // Update timer display
