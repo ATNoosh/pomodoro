@@ -152,7 +152,8 @@ function initDatabase() {
       text TEXT NOT NULL,
       completed INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
-      pomodoros INTEGER NOT NULL DEFAULT 0
+      pomodoros INTEGER NOT NULL DEFAULT 0,
+      dueDate TEXT
     );
     CREATE TABLE IF NOT EXISTS history(
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,7 +223,7 @@ app.whenReady().then(() => {
 ipcMain.handle('load-data', async () => {
   try {
     if (db) {
-      const tasks = db.prepare('SELECT id, text, completed, createdAt, pomodoros FROM tasks ORDER BY createdAt ASC').all()
+      const tasks = db.prepare('SELECT id, text, completed, createdAt, pomodoros, dueDate FROM tasks ORDER BY createdAt ASC').all()
         .map(t => ({ ...t, completed: !!t.completed }));
       const settingsRows = db.prepare('SELECT key, value FROM settings').all();
       const settings = {};
@@ -250,14 +251,15 @@ ipcMain.handle('save-data', async (event, data) => {
     if (db) {
       const tx = db.transaction(() => {
         db.prepare('DELETE FROM tasks').run();
-        const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
+        const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @dueDate)');
         for (const t of data.tasks || []) {
           insertTask.run({
             id: t.id,
             text: t.text || '',
             completed: t.completed ? 1 : 0,
             createdAt: t.createdAt || new Date().toISOString(),
-            pomodoros: t.pomodoros || 0
+            pomodoros: t.pomodoros || 0,
+            dueDate: t.dueDate || null
           });
         }
         // settings

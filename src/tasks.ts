@@ -18,7 +18,8 @@ export class TaskManager {
         text: text.trim(),
         completed: false,
         createdAt: new Date().toISOString(),
-        pomodoros: 0
+        pomodoros: 0,
+        dueDate: this.getSelectedDateISO() // default to selected date
       };
       
       this.app.data.tasks.push(task);
@@ -75,7 +76,9 @@ export class TaskManager {
     tasksList.innerHTML = '';
     
     if (this.app.data.tasks && this.app.data.tasks.length > 0) {
-      this.app.data.tasks.forEach((task: Task) => {
+      const selectedISO = this.getSelectedDateISO();
+      const tasksForDay = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+      tasksForDay.forEach((task: Task) => {
         const taskElement = this.createTaskElement(task);
         tasksList.appendChild(taskElement);
       });
@@ -231,6 +234,19 @@ export class TaskManager {
   
   // Get completed tasks count
   getCompletedTasksCount(): number {
-    return this.app.data.tasks.filter((task: Task) => task.completed).length;
+    const selectedISO = this.getSelectedDateISO();
+    return this.app.data.tasks.filter((task: Task) => (task.dueDate || this.dateFromISO(task.createdAt)) === selectedISO && task.completed).length;
+  }
+
+  // Helpers for date selection (default: today)
+  private getSelectedDateISO(): string {
+    const picker = document.getElementById('taskDate') as HTMLInputElement | null;
+    if (picker && picker.value) return picker.value;
+    const today = new Date();
+    return today.toISOString().slice(0, 10);
+  }
+
+  private dateFromISO(iso: string): string {
+    try { return new Date(iso).toISOString().slice(0, 10); } catch { return this.getSelectedDateISO(); }
   }
 }

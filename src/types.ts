@@ -6,6 +6,7 @@ export interface Task {
   completed: boolean;
   createdAt: string;
   pomodoros: number;
+  dueDate?: string; // YYYY-MM-DD
 }
 
 export interface HistoryItem {

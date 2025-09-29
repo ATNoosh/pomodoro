@@ -130,6 +130,7 @@ export class PomodoroApp {
     const cancelTaskBtn = document.getElementById('cancelTaskBtn');
     const taskInput = document.getElementById('taskInput');
     const tasksList = document.getElementById('tasksList');
+    const taskDate = document.getElementById('taskDate') as HTMLInputElement | null;
     
     if (addTaskBtn) {
       addTaskBtn.addEventListener('click', () => {
@@ -160,6 +161,16 @@ export class PomodoroApp {
     if (tasksList) {
       tasksList.addEventListener('click', (e) => {
         this.tasks.handleTaskClick(e);
+      });
+    }
+    
+    if (taskDate) {
+      // initialize to today
+      const today = new Date().toISOString().slice(0, 10);
+      taskDate.value = today;
+      taskDate.addEventListener('change', () => {
+        this.tasks.render();
+        this.stats.update();
       });
     }
     
