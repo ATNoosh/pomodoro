@@ -129,6 +129,7 @@ export class PomodoroApp {
     const saveTaskBtn = document.getElementById('saveTaskBtn');
     const cancelTaskBtn = document.getElementById('cancelTaskBtn');
     const taskInput = document.getElementById('taskInput');
+    const taskDueDate = document.getElementById('taskDueDate') as HTMLInputElement | null;
     const tasksList = document.getElementById('tasksList');
     const taskDate = document.getElementById('taskDate') as HTMLInputElement | null;
     
@@ -141,8 +142,14 @@ export class PomodoroApp {
     if (saveTaskBtn) {
       saveTaskBtn.addEventListener('click', () => {
         const input = document.getElementById('taskInput') as HTMLInputElement;
+        if (taskDueDate && taskDueDate.value) {
+          this.tasks.setNextDueDate(taskDueDate.value);
+        } else {
+          this.tasks.setNextDueDate(this.tasks.getSelectedDateISO());
+        }
         this.tasks.addTask(input.value);
         this.tasks.hideTaskInput();
+        if (taskDueDate) taskDueDate.value = '';
       });
     }
     

@@ -5,6 +5,7 @@ import { PomodoroApp, Task } from './types.js';
 export class TaskManager {
   private app: PomodoroApp;
   private selectedTaskId: number | null = null;
+  private pendingDueDateISO: string | null = null;
 
   constructor(app: PomodoroApp) {
     this.app = app;
@@ -19,13 +20,14 @@ export class TaskManager {
         completed: false,
         createdAt: new Date().toISOString(),
         pomodoros: 0,
-        dueDate: this.getSelectedDateISO() // default to selected date
+        dueDate: (this.pendingDueDateISO || this.getSelectedDateISO())
       };
       
       this.app.data.tasks.push(task);
       this.app.saveData();
       this.render();
       this.app.stats.update();
+      this.pendingDueDateISO = null;
     }
   }
   
@@ -45,6 +47,11 @@ export class TaskManager {
     const task = this.app.data.tasks.find((t: Task) => t.id === id);
     if (task && Utils.validateTaskText(newText)) {
       task.text = newText.trim();
+      // Apply pending due date if provided
+      if (this.pendingDueDateISO) {
+        task.dueDate = this.pendingDueDateISO;
+        this.pendingDueDateISO = null;
+      }
       this.app.saveData();
       this.render();
     }
@@ -179,12 +186,16 @@ export class TaskManager {
   // Show edit task prompt
   editTaskPrompt(id: number): void {
     const task = this.app.data.tasks.find((t: Task) => t.id === id);
-    if (task) {
-      const newText = Utils.prompt('Edit task:', task.text);
-      if (newText !== null) {
-        this.editTask(id, newText);
-      }
+    if (!task) return;
+    const newText = Utils.prompt('Edit task text:', task.text);
+    if (newText === null) return;
+    // Ask for due date (YYYY-MM-DD). Empty keeps current.
+    const currentDue = task.dueDate || this.dateFromISO(task.createdAt);
+    const newDue = Utils.prompt('Edit due date (YYYY-MM-DD):', currentDue);
+    if (newDue && /^\d{4}-\d{2}-\d{2}$/.test(newDue)) {
+      this.setNextDueDate(newDue);
     }
+    this.editTask(id, newText);
   }
   
   // Handle task list click events
@@ -239,7 +250,7 @@ export class TaskManager {
   }
 
   // Helpers for date selection (default: today)
-  private getSelectedDateISO(): string {
+  getSelectedDateISO(): string {
     const picker = document.getElementById('taskDate') as HTMLInputElement | null;
     if (picker && picker.value) return picker.value;
     const today = new Date();
@@ -248,5 +259,10 @@ export class TaskManager {
 
   private dateFromISO(iso: string): string {
     try { return new Date(iso).toISOString().slice(0, 10); } catch { return this.getSelectedDateISO(); }
+  }
+
+  // Allow external to set desired due date before add/edit
+  setNextDueDate(iso: string): void {
+    this.pendingDueDateISO = iso;
   }
 }
