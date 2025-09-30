@@ -125,23 +125,27 @@ export class TaskManager {
   
   // Navigate between tasks with arrow keys
   navigateTasks(direction: number): void {
+    // Navigate within currently visible (filtered-by-date) tasks
     if (this.app.data.tasks.length === 0) return;
+    const selectedISO = this.getSelectedDateISO();
+    const visibleTasks = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+    if (visibleTasks.length === 0) return;
     
     let currentIndex = -1;
     if (this.selectedTaskId) {
-      currentIndex = this.app.data.tasks.findIndex((task: Task) => task.id === this.selectedTaskId);
+      currentIndex = visibleTasks.findIndex((task: Task) => task.id === this.selectedTaskId);
     }
     
     let newIndex = currentIndex + direction;
     
     // Wrap around
     if (newIndex < 0) {
-      newIndex = this.app.data.tasks.length - 1;
-    } else if (newIndex >= this.app.data.tasks.length) {
+      newIndex = visibleTasks.length - 1;
+    } else if (newIndex >= visibleTasks.length) {
       newIndex = 0;
     }
     
-    this.selectTask(this.app.data.tasks[newIndex].id);
+    this.selectTask(visibleTasks[newIndex].id);
   }
   
   // Show task input form
@@ -251,7 +255,8 @@ export class TaskManager {
 
   // Helpers for date selection (default: today)
   getSelectedDateISO(): string {
-    const picker = document.getElementById('taskDate') as HTMLInputElement | null;
+    // Prefer the filter picker used in UI; fallback to legacy id
+    const picker = (document.getElementById('taskFilterDate') || document.getElementById('taskDate')) as HTMLInputElement | null;
     if (picker && picker.value) return picker.value;
     const today = new Date();
     return today.toISOString().slice(0, 10);

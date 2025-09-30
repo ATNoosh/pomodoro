@@ -1,8 +1,9 @@
 const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
-let Database;
-try { Database = require('better-sqlite3'); } catch (_) { Database = null; }
+// Use sql.js (WASM) instead of native better-sqlite3 to avoid build toolchain
+const initSqlJs = require('sql.js');
+let SQL = null; // set after init
 
 // Set environment variables to prevent GPU errors
 process.env.ELECTRON_DISABLE_GPU = '1';
@@ -130,22 +131,80 @@ ipcMain.on('timer-tick', (_event, state) => {
   }
 });
 
-// IPC handlers for data persistence
+// IPC handlers for data persistence (sql.js)
 const userDataDir = app.getPath('userData');
 const dataPath = path.join(userDataDir, 'pomodoro-data.json');
 const dbPath = path.join(userDataDir, 'pomodoro.db');
-let db;
+let db; // sql.js Database
 
-function initDatabase() {
-  if (!Database) {
-    console.error('better-sqlite3 not installed');
-    return;
-  }
+function ensureUserDir() {
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
-  db = new Database(dbPath);
-  db.exec(`
+}
+
+function saveDbToDisk() {
+  if (!db) return;
+  const binaryArray = db.export();
+  const buffer = Buffer.from(binaryArray);
+  fs.writeFileSync(dbPath, buffer);
+}
+
+function exec(sql) {
+  db.exec(sql);
+}
+
+function run(sql, params = {}) {
+  const stmt = db.prepare(sql);
+  try {
+    stmt.bind(params);
+    while (stmt.step()) {
+      // drain
+    }
+  } finally {
+    stmt.free();
+  }
+}
+
+function all(sql, params = {}) {
+  const stmt = db.prepare(sql);
+  const rows = [];
+  try {
+    stmt.bind(params);
+    while (stmt.step()) {
+      rows.push(stmt.getAsObject());
+    }
+  } finally {
+    stmt.free();
+  }
+  return rows;
+}
+
+function getScalar(sql) {
+  const rows = all(sql);
+  if (rows.length === 0) return undefined;
+  const obj = rows[0];
+  const firstKey = Object.keys(obj)[0];
+  return obj[firstKey];
+}
+
+async function initSqlDatabase() {
+  ensureUserDir();
+  if (!SQL) {
+    SQL = await initSqlJs({
+      locateFile: (file) => path.join(__dirname, 'node_modules', 'sql.js', 'dist', file)
+    });
+  }
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(new Uint8Array(fileBuffer));
+    console.log('sql.js DB loaded from', dbPath);
+  } else {
+    db = new SQL.Database();
+    console.log('sql.js DB created in memory');
+  }
+
+  exec(`
     PRAGMA journal_mode=WAL;
     CREATE TABLE IF NOT EXISTS tasks(
       id INTEGER PRIMARY KEY,
@@ -169,72 +228,89 @@ function initDatabase() {
   `);
 
   // Migration from JSON if DB is empty
-  const countTasks = db.prepare('SELECT COUNT(1) AS c FROM tasks').get().c;
-  const countSettings = db.prepare('SELECT COUNT(1) AS c FROM settings').get().c;
+  const countTasks = Number(getScalar('SELECT COUNT(1) AS c FROM tasks')) || 0;
+  const countSettings = Number(getScalar('SELECT COUNT(1) AS c FROM settings')) || 0;
   if (countTasks === 0 && countSettings === 0 && fs.existsSync(dataPath)) {
     try {
       const json = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
-      const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
-      const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
-      const tx = db.transaction(() => {
+      db.run('BEGIN');
+      try {
         if (Array.isArray(json.tasks)) {
+          const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
           for (const t of json.tasks) {
-            insertTask.run({
-              id: t.id,
-              text: t.text || '',
-              completed: t.completed ? 1 : 0,
-              createdAt: t.createdAt || new Date().toISOString(),
-              pomodoros: t.pomodoros || 0
+            insertTask.bind({
+              '@id': t.id,
+              '@text': t.text || '',
+              '@completed': t.completed ? 1 : 0,
+              '@createdAt': t.createdAt || new Date().toISOString(),
+              '@pomodoros': t.pomodoros || 0
             });
+            insertTask.step();
+            insertTask.reset();
           }
+          insertTask.free();
         }
         const s = json.settings || {};
         const defaults = { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false };
         const merged = { ...defaults, ...s };
+        const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(@key, @value)');
         for (const [k, v] of Object.entries(merged)) {
-          insertSetting.run(k, JSON.stringify(v));
+          insertSetting.bind({ '@key': k, '@value': JSON.stringify(v) });
+          insertSetting.step();
+          insertSetting.reset();
         }
-        // history optional
+        insertSetting.free();
         if (Array.isArray(json.history)) {
           const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
           for (const h of json.history) {
-            insertHistory.run({
-              taskId: h.taskId ?? null,
-              startedAt: h.startedAt || null,
-              endedAt: h.endedAt || null,
-              mode: h.mode || null
+            insertHistory.bind({
+              '@taskId': h.taskId ?? null,
+              '@startedAt': h.startedAt || null,
+              '@endedAt': h.endedAt || null,
+              '@mode': h.mode || null
             });
+            insertHistory.step();
+            insertHistory.reset();
           }
+          insertHistory.free();
         }
-      });
-      tx();
-      console.log('Migrated data from JSON to SQLite');
+        db.run('COMMIT');
+        saveDbToDisk();
+        console.log('Migrated data from JSON to sql.js DB');
+      } catch (e) {
+        db.run('ROLLBACK');
+        throw e;
+      }
     } catch (e) {
       console.error('Migration failed:', e);
     }
   }
+  // Persist DB if it was newly created
+  saveDbToDisk();
 }
 
-app.whenReady().then(() => {
-  if (Database) initDatabase();
+app.whenReady().then(async () => {
+  await initSqlDatabase();
 });
 
 // Load data from file
 ipcMain.handle('load-data', async () => {
   try {
     if (db) {
-      const tasks = db.prepare('SELECT id, text, completed, createdAt, pomodoros, dueDate FROM tasks ORDER BY createdAt ASC').all()
+      console.log('Loading data from sql.js at', dbPath);
+      const tasks = all('SELECT id, text, completed, createdAt, pomodoros, dueDate FROM tasks ORDER BY createdAt ASC')
         .map(t => ({ ...t, completed: !!t.completed }));
-      const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+      const settingsRows = all('SELECT key, value FROM settings');
       const settings = {};
       for (const r of settingsRows) { settings[r.key] = JSON.parse(r.value); }
       const defaults = { workTime: 25, breakTime: 5, longBreakTime: 15, longBreakInterval: 4, notificationsEnabled: false, autoStartBreaks: false };
       const mergedSettings = { ...defaults, ...settings };
-      const history = db.prepare('SELECT id, taskId, startedAt, endedAt, mode FROM history ORDER BY id DESC LIMIT 1000').all();
+      const history = all('SELECT id, taskId, startedAt, endedAt, mode FROM history ORDER BY id DESC LIMIT 1000');
       return { tasks, history, settings: mergedSettings };
     }
     // Fallback to JSON
     if (fs.existsSync(dataPath)) {
+      console.log('Loading data from JSON fallback at', dataPath);
       const data = fs.readFileSync(dataPath, 'utf8');
       return JSON.parse(data);
     }
@@ -249,44 +325,61 @@ ipcMain.handle('load-data', async () => {
 ipcMain.handle('save-data', async (event, data) => {
   try {
     if (db) {
-      const tx = db.transaction(() => {
-        db.prepare('DELETE FROM tasks').run();
-        const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @dueDate)');
-        for (const t of data.tasks || []) {
-          insertTask.run({
-            id: t.id,
-            text: t.text || '',
-            completed: t.completed ? 1 : 0,
-            createdAt: t.createdAt || new Date().toISOString(),
-            pomodoros: t.pomodoros || 0,
-            dueDate: t.dueDate || null
-          });
+      console.log('Saving data to sql.js at', dbPath);
+      db.run('BEGIN');
+      try {
+        run('DELETE FROM tasks');
+        if (Array.isArray(data.tasks)) {
+          const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @dueDate)');
+          for (const t of data.tasks) {
+            insertTask.bind({
+              '@id': t.id,
+              '@text': t.text || '',
+              '@completed': t.completed ? 1 : 0,
+              '@createdAt': t.createdAt || new Date().toISOString(),
+              '@pomodoros': t.pomodoros || 0,
+              '@dueDate': t.dueDate || null
+            });
+            insertTask.step();
+            insertTask.reset();
+          }
+          insertTask.free();
         }
-        // settings
-        db.prepare('DELETE FROM settings').run();
-        const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
-        const s = data.settings || {};
-        for (const [k, v] of Object.entries(s)) {
-          insertSetting.run(k, JSON.stringify(v));
+        run('DELETE FROM settings');
+        if (data.settings) {
+          const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(@key, @value)');
+          for (const [k, v] of Object.entries(data.settings)) {
+            insertSetting.bind({ '@key': k, '@value': JSON.stringify(v) });
+            insertSetting.step();
+            insertSetting.reset();
+          }
+          insertSetting.free();
         }
-        // history: replace with incoming if provided
         if (Array.isArray(data.history)) {
-          db.prepare('DELETE FROM history').run();
+          run('DELETE FROM history');
           const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
           for (const h of data.history) {
-            insertHistory.run({
-              taskId: h.taskId ?? null,
-              startedAt: h.startedAt || null,
-              endedAt: h.endedAt || null,
-              mode: h.mode || null
+            insertHistory.bind({
+              '@taskId': h.taskId ?? null,
+              '@startedAt': h.startedAt || null,
+              '@endedAt': h.endedAt || null,
+              '@mode': h.mode || null
             });
+            insertHistory.step();
+            insertHistory.reset();
           }
+          insertHistory.free();
         }
-      });
-      tx();
-      return true;
+        db.run('COMMIT');
+        saveDbToDisk();
+        return true;
+      } catch (e) {
+        db.run('ROLLBACK');
+        throw e;
+      }
     }
     // fallback
+    console.warn('Saving data to JSON fallback at', dataPath);
     fs.writeFileSync(dataPath, JSON.stringify(data, null, 2));
     return true;
   } catch (error) {
@@ -308,7 +401,8 @@ ipcMain.handle('export-data', async () => {
     });
 
     if (!result.canceled && result.filePath) {
-      if (db && fs.existsSync(dbPath)) {
+      if (db) {
+        saveDbToDisk();
         fs.copyFileSync(dbPath, result.filePath);
         return { success: true, path: result.filePath };
       }
@@ -340,46 +434,60 @@ ipcMain.handle('import-data', async () => {
     if (!result.canceled && result.filePaths.length > 0) {
       const file = result.filePaths[0];
       if (file.toLowerCase().endsWith('.db')) {
-        if (db) {
-          // Close current DB handle before replacing
-          try { db.close(); } catch {}
-          fs.copyFileSync(file, dbPath);
-          // Re-open
-          db = new Database(dbPath);
-          return { success: true };
-        } else {
-          // No DB, just copy
-          fs.copyFileSync(file, dbPath);
-          return { success: true };
-        }
+        // Replace the db file on disk and reload into sql.js
+        fs.copyFileSync(file, dbPath);
+        const fileBuffer = fs.readFileSync(dbPath);
+        db = new SQL.Database(new Uint8Array(fileBuffer));
+        return { success: true };
       } else {
         // JSON import fallback: load and save into DB
         const parsedData = JSON.parse(fs.readFileSync(file, 'utf8'));
         if (db) {
-          const tx = db.transaction(() => {
-            db.prepare('DELETE FROM tasks').run();
-            db.prepare('DELETE FROM settings').run();
-            db.prepare('DELETE FROM history').run();
-            const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
-            for (const t of parsedData.tasks || []) {
-              insertTask.run({
-                id: t.id,
-                text: t.text || '',
-                completed: t.completed ? 1 : 0,
-                createdAt: t.createdAt || new Date().toISOString(),
-                pomodoros: t.pomodoros || 0
-              });
+          db.run('BEGIN');
+          try {
+            run('DELETE FROM tasks');
+            run('DELETE FROM settings');
+            run('DELETE FROM history');
+            if (Array.isArray(parsedData.tasks)) {
+              const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros) VALUES(@id, @text, @completed, @createdAt, @pomodoros)');
+              for (const t of parsedData.tasks) {
+                insertTask.bind({
+                  '@id': t.id,
+                  '@text': t.text || '',
+                  '@completed': t.completed ? 1 : 0,
+                  '@createdAt': t.createdAt || new Date().toISOString(),
+                  '@pomodoros': t.pomodoros || 0
+                });
+                insertTask.step();
+                insertTask.reset();
+              }
+              insertTask.free();
             }
-            const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(?, ?)');
-            const s = parsedData.settings || {};
-            for (const [k, v] of Object.entries(s)) insertSetting.run(k, JSON.stringify(v));
+            if (parsedData.settings) {
+              const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(@key, @value)');
+              for (const [k, v] of Object.entries(parsedData.settings)) {
+                insertSetting.bind({ '@key': k, '@value': JSON.stringify(v) });
+                insertSetting.step();
+                insertSetting.reset();
+              }
+              insertSetting.free();
+            }
             if (Array.isArray(parsedData.history)) {
               const insertHistory = db.prepare('INSERT INTO history(taskId, startedAt, endedAt, mode) VALUES(@taskId, @startedAt, @endedAt, @mode)');
-              for (const h of parsedData.history) insertHistory.run({ taskId: h.taskId ?? null, startedAt: h.startedAt || null, endedAt: h.endedAt || null, mode: h.mode || null });
+              for (const h of parsedData.history) {
+                insertHistory.bind({ '@taskId': h.taskId ?? null, '@startedAt': h.startedAt || null, '@endedAt': h.endedAt || null, '@mode': h.mode || null });
+                insertHistory.step();
+                insertHistory.reset();
+              }
+              insertHistory.free();
             }
-          });
-          tx();
-          return { success: true };
+            db.run('COMMIT');
+            saveDbToDisk();
+            return { success: true };
+          } catch (e) {
+            db.run('ROLLBACK');
+            throw e;
+          }
         } else {
           // fallback write JSON
           fs.writeFileSync(dataPath, JSON.stringify(parsedData, null, 2));

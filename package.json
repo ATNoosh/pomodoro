@@ -60,5 +60,9 @@
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"
     }
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.4.1",
+    "sql.js": "^1.13.0"
   }
 }
