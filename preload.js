@@ -23,6 +23,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   timerTick: (state) => ipcRenderer.send('timer-tick', state),
   onTimerUpdate: (callback) => ipcRenderer.on('timer-update', (_e, state) => callback(state)),
   
+  // Utilities
+  getDbPath: () => ipcRenderer.invoke('get-db-path'),
+  flushDb: () => ipcRenderer.invoke('flush-db'),
+  
   // Platform info
   platform: process.platform,
   

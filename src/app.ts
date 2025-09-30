@@ -36,6 +36,7 @@ export class PomodoroApp {
   public notifications: NotificationManager;
   public stats: StatsManager;
   public dataManager: DataManager;
+  private static listenersBound = false;
 
   constructor() {
     // Initialize all modules
@@ -88,6 +89,10 @@ export class PomodoroApp {
   
   // Setup all event listeners
   private setupEventListeners(): void {
+    if (PomodoroApp.listenersBound) {
+      console.log('Event listeners already bound, skipping');
+      return;
+    }
     console.log('Setting up event listeners...');
     
     // Timer controls
@@ -130,6 +135,7 @@ export class PomodoroApp {
     const cancelTaskBtn = document.getElementById('cancelTaskBtn');
     const taskInput = document.getElementById('taskInput');
     const taskDueDate = document.getElementById('taskDueDate') as HTMLInputElement | null;
+    const taskTargetPomodoros = document.getElementById('taskTargetPomodoros') as HTMLInputElement | null;
     const tasksList = document.getElementById('tasksList');
     const taskDate = document.getElementById('taskDate') as HTMLInputElement | null;
     
@@ -150,6 +156,7 @@ export class PomodoroApp {
         this.tasks.addTask(input.value);
         this.tasks.hideTaskInput();
         if (taskDueDate) taskDueDate.value = '';
+        if (taskTargetPomodoros) taskTargetPomodoros.value = '';
       });
     }
     
@@ -160,10 +167,46 @@ export class PomodoroApp {
     }
     
     if (taskInput) {
-      taskInput.addEventListener('keypress', (e) => {
+      // Stop propagation on both mousedown and keydown to avoid header/drag capturing
+      taskInput.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+      });
+      taskInput.addEventListener('keydown', (e) => {
+        // Stop propagation so global shortcuts don't steal focus
+        e.stopPropagation();
         this.tasks.handleTaskInput(e as KeyboardEvent);
       });
     }
+
+    // Clicking anywhere inside taskInputContainer should focus the text input
+    let taskInputContainer = document.getElementById('taskInputContainer');
+    if (taskInputContainer) {
+      taskInputContainer.addEventListener('mousedown', (e) => {
+        e.stopPropagation();
+        const inputEl = document.getElementById('taskInput') as HTMLInputElement | null;
+        if (inputEl) {
+          inputEl.focus();
+        }
+      });
+    }
+
+    // If the window regains focus (similar to Alt+Tab), refocus the task input if visible
+    const focusTaskInputIfVisible = () => {
+      const cont = document.getElementById('taskInputContainer') as HTMLElement | null;
+      const inp = document.getElementById('taskInput') as HTMLInputElement | null;
+      if (cont && inp && cont.style.display === 'block') {
+        try { (document.activeElement as HTMLElement)?.blur?.(); } catch {}
+        setTimeout(() => { inp.focus(); inp.select(); }, 0);
+      }
+    };
+    window.addEventListener('focus', focusTaskInputIfVisible);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        focusTaskInputIfVisible();
+      }
+    });
+    
+    // (removed duplicate taskInputContainer handler)
     
     if (tasksList) {
       tasksList.addEventListener('click', (e) => {
@@ -263,6 +306,7 @@ export class PomodoroApp {
     
     // Setup modal event listeners
     this.modals.setupModalEventListeners();
+    PomodoroApp.listenersBound = true;
   }
   
   // Update the entire UI

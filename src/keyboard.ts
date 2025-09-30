@@ -3,6 +3,7 @@ import { PomodoroApp, ShortcutsHelp } from './types.js';
 // Keyboard shortcuts functionality for Pomodoro App
 export class KeyboardManager {
   private app: PomodoroApp;
+  private static listenersBound = false;
 
   constructor(app: PomodoroApp) {
     this.app = app;
@@ -11,16 +12,27 @@ export class KeyboardManager {
   
   // Setup all keyboard event listeners
   private setupKeyboardShortcuts(): void {
+    if (KeyboardManager.listenersBound) return;
     document.addEventListener('keydown', (e) => {
       this.handleKeyPress(e);
     });
+    KeyboardManager.listenersBound = true;
   }
   
   // Handle keyboard key press
   private handleKeyPress(e: KeyboardEvent): void {
-    // Prevent shortcuts when typing in input fields
+    // Prevent shortcuts when typing in inputs, EXCEPT for specific controls where we want to handle keys
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-      return;
+      const el = e.target as HTMLInputElement;
+      // Allow handling when focus is on task date filter so ArrowUp/Down navigates tasks (not change date)
+      // Also allow shortcuts when focus is on hidden/temporary task input container's input handling (we still manage Enter there separately)
+      if (el.id !== 'taskDate') {
+        return;
+      }
+      // If focused on taskDate, prevent its default arrow behavior so we navigate tasks instead of changing the date
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+      }
     }
     
     console.log('Key pressed:', e.key);
@@ -103,8 +115,9 @@ export class KeyboardManager {
       this.app.tasks.toggleTask(this.app.tasks.getSelectedTaskId()!);
     }
     
-    // Delete: Delete Selected Task
+    // Delete: Delete Selected Task (ignore auto-repeat to prevent multiple deletions)
     if (e.key === 'Delete' && this.app.tasks.getSelectedTaskId()) {
+      if ((e as any).repeat) return;
       e.preventDefault();
       if (confirm('Are you sure you want to delete this task?')) {
         this.app.tasks.deleteTask(this.app.tasks.getSelectedTaskId()!);

@@ -6,6 +6,7 @@ export interface Task {
   completed: boolean;
   createdAt: string;
   pomodoros: number;
+  targetPomodoros?: number; // desired number of pomodoros for this task
   dueDate?: string; // YYYY-MM-DD
 }
 

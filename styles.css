@@ -233,6 +233,7 @@ body {
     padding: 2rem;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     border: 1px solid rgba(255, 255, 255, 0.2);
+    position: relative;
 }
 
 .tasks-header {
@@ -258,6 +259,10 @@ body {
     border-radius: 15px;
     padding: 1rem;
     margin-bottom: 1rem;
+    position: relative;
+    z-index: 10000;
+    -webkit-app-region: no-drag;
+    pointer-events: auto;
 }
 
 .task-input-container input {
@@ -268,6 +273,7 @@ body {
     font-size: 1rem;
     margin-bottom: 1rem;
     transition: border-color 0.3s ease;
+    -webkit-app-region: no-drag;
 }
 
 .task-input-container input:focus {
@@ -279,6 +285,7 @@ body {
     display: flex;
     gap: 0.5rem;
     justify-content: flex-end;
+    -webkit-app-region: no-drag;
 }
 
 .tasks-list {

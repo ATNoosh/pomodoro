@@ -7,6 +7,12 @@ export class TaskManager {
   private selectedTaskId: number | null = null;
   private pendingDueDateISO: string | null = null;
 
+  private getNextTaskId(): number {
+    const ids = (this.app.data.tasks || []).map((t: Task) => t.id);
+    const maxId = ids.length ? Math.max(...ids) : 0;
+    return maxId + 1;
+  }
+
   constructor(app: PomodoroApp) {
     this.app = app;
   }
@@ -14,18 +20,31 @@ export class TaskManager {
   // Add a new task
   addTask(text: string): void {
     if (Utils.validateTaskText(text)) {
+      const targetInput = document.getElementById('taskTargetPomodoros') as HTMLInputElement | null;
+      const targetPoms = targetInput && targetInput.value ? Math.max(1, Math.min(20, parseInt(targetInput.value, 10))) : undefined;
       const task: Task = {
-        id: Utils.generateId(),
+        id: this.getNextTaskId(),
         text: text.trim(),
         completed: false,
         createdAt: new Date().toISOString(),
         pomodoros: 0,
+        targetPomodoros: targetPoms,
         dueDate: (this.pendingDueDateISO || this.getSelectedDateISO())
       };
       
       this.app.data.tasks.push(task);
+      // Select the newly added task so keyboard navigation includes it
+      this.selectedTaskId = task.id;
       this.app.saveData();
       this.render();
+      // Ensure the newly added task is visible
+      const tasksList = document.getElementById('tasksList');
+      if (tasksList) {
+        const el = tasksList.querySelector(`.task-item[data-id="${task.id}"]`) as HTMLElement | null;
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
       this.app.stats.update();
       this.pendingDueDateISO = null;
     }
@@ -52,6 +71,12 @@ export class TaskManager {
         task.dueDate = this.pendingDueDateISO;
         this.pendingDueDateISO = null;
       }
+      // Optionally update target pomodoros if user provided during edit prompt flow
+      const targetInput = document.getElementById('taskTargetPomodoros') as HTMLInputElement | null;
+      if (targetInput && targetInput.value) {
+        const val = Math.max(1, Math.min(20, parseInt(targetInput.value, 10)));
+        task.targetPomodoros = val;
+      }
       this.app.saveData();
       this.render();
     }
@@ -59,7 +84,20 @@ export class TaskManager {
   
   // Delete a task
   deleteTask(id: number): void {
-    this.app.data.tasks = this.app.data.tasks.filter((t: Task) => t.id !== id);
+    // Remove only the selected id (stable mutation)
+    const idx = this.app.data.tasks.findIndex((t: Task) => t.id === id);
+    if (idx >= 0) {
+      this.app.data.tasks.splice(idx, 1);
+    }
+    // Normalize selection to neighbor in the same filtered list
+    const selectedISO = this.getSelectedDateISO();
+    const visible = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+    if (visible.length > 0) {
+      const newIdx = Math.min(idx, visible.length - 1);
+      this.selectedTaskId = visible[Math.max(0, newIdx)].id;
+    } else {
+      this.selectedTaskId = null;
+    }
     this.app.saveData();
     this.render();
     this.app.stats.update();
@@ -85,6 +123,7 @@ export class TaskManager {
     if (this.app.data.tasks && this.app.data.tasks.length > 0) {
       const selectedISO = this.getSelectedDateISO();
       const tasksForDay = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+      console.log('Selected day:', selectedISO, 'Visible tasks:', tasksForDay.map(t => ({ id: t.id, due: t.dueDate || this.dateFromISO(t.createdAt), text: t.text })));
       tasksForDay.forEach((task: Task) => {
         const taskElement = this.createTaskElement(task);
         tasksList.appendChild(taskElement);
@@ -103,7 +142,7 @@ export class TaskManager {
     div.tabIndex = 0; // Make focusable
     div.innerHTML = `
       <div class="task-checkbox ${task.completed ? 'checked' : ''}" data-id="${task.id}"></div>
-      <div class="task-text">${Utils.escapeHtml(task.text)}</div>
+      <div class="task-text">${Utils.escapeHtml(task.text)}${task.targetPomodoros ? ` <span class="task-target">(${task.pomodoros}/${task.targetPomodoros})</span>` : ''}</div>
       <div class="task-actions">
         <button class="edit-btn" data-id="${task.id}" title="Edit task">
           <i class="fas fa-edit"></i>
@@ -120,7 +159,22 @@ export class TaskManager {
   // Select a task
   selectTask(id: number): void {
     this.selectedTaskId = id;
-    this.render(); // Re-render to update selection
+    const tasksList = document.getElementById('tasksList');
+    if (tasksList) {
+      const items = tasksList.querySelectorAll('.task-item');
+      items.forEach((el) => {
+        const element = el as HTMLElement;
+        const elId = parseInt(element.dataset.id || '0');
+        if (elId === id) {
+          element.classList.add('selected');
+        } else {
+          element.classList.remove('selected');
+        }
+      });
+    } else {
+      // Fallback: if list not found, do a safe re-render
+      this.render();
+    }
   }
   
   // Navigate between tasks with arrow keys
@@ -129,11 +183,16 @@ export class TaskManager {
     if (this.app.data.tasks.length === 0) return;
     const selectedISO = this.getSelectedDateISO();
     const visibleTasks = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+    console.log('navigateTasks selectedISO', selectedISO, 'visible ids', visibleTasks.map(t => t.id));
     if (visibleTasks.length === 0) return;
     
     let currentIndex = -1;
     if (this.selectedTaskId) {
       currentIndex = visibleTasks.findIndex((task: Task) => task.id === this.selectedTaskId);
+    }
+    // If current selection is not in visible list (e.g., after add/delete), fall back to last item
+    if (currentIndex === -1) {
+      currentIndex = visibleTasks.length - 1;
     }
     
     let newIndex = currentIndex + direction;
@@ -145,7 +204,10 @@ export class TaskManager {
       newIndex = 0;
     }
     
+    console.log('navigateTasks move', direction, 'from', currentIndex, 'to', newIndex, 'select', visibleTasks[newIndex].id);
     this.selectTask(visibleTasks[newIndex].id);
+    // Ensure currently selected stays visible and list intact
+    // Do not re-render here; selection is updated in place.
   }
   
   // Show task input form
@@ -163,28 +225,48 @@ export class TaskManager {
     input.disabled = false;
     input.readOnly = false;
     input.style.pointerEvents = 'auto';
+    input.tabIndex = 0;
     input.value = '';
     
+    // Show container above other elements and enable interactions
     container.style.display = 'block';
+    (container as HTMLElement).style.pointerEvents = 'auto';
+    (container as HTMLElement).style.zIndex = '10';
+    // Temporarily disable pointer events on the tasks list to avoid accidental capture
+    const tasksList = document.getElementById('tasksList') as HTMLElement | null;
+    if (tasksList) tasksList.style.pointerEvents = 'none';
+    // Proactively blur any other focused element
+    try { (document.activeElement as HTMLElement)?.blur?.(); } catch {}
     
-    // Use setTimeout to ensure DOM is updated before focusing
-    setTimeout(() => {
-      input.focus();
-      console.log('Task input focused');
-    }, 50);
+    // Use double requestAnimationFrame to ensure layout has settled before focusing
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Trigger a click to break any overlay capture, then focus
+        input.click();
+        input.focus({ preventScroll: true } as any);
+        input.select();
+        console.log('Task input focused');
+      });
+    });
   }
   
   // Hide task input form
   hideTaskInput(): void {
     const container = document.getElementById('taskInputContainer');
     const input = document.getElementById('taskInput') as HTMLInputElement;
-    if (container) container.style.display = 'none';
+    if (container) {
+      (container as HTMLElement).style.display = 'none';
+      (container as HTMLElement).style.pointerEvents = 'none';
+      (container as HTMLElement).style.zIndex = '';
+    }
     if (input) {
       input.value = '';
       input.disabled = false;
       input.readOnly = false;
       input.style.pointerEvents = 'auto';
     }
+    const tasksList = document.getElementById('tasksList') as HTMLElement | null;
+    if (tasksList) tasksList.style.pointerEvents = 'auto';
   }
   
   // Show edit task prompt
@@ -199,6 +281,14 @@ export class TaskManager {
     if (newDue && /^\d{4}-\d{2}-\d{2}$/.test(newDue)) {
       this.setNextDueDate(newDue);
     }
+    const currentTarget = task.targetPomodoros ? String(task.targetPomodoros) : '';
+    const newTarget = Utils.prompt('Target pomodoros (blank to keep):', currentTarget);
+    if (newTarget !== null && newTarget !== '') {
+      const parsed = parseInt(newTarget, 10);
+      if (!isNaN(parsed) && parsed > 0) {
+        task.targetPomodoros = Math.min(20, parsed);
+      }
+    }
     this.editTask(id, newText);
   }
   
@@ -209,6 +299,7 @@ export class TaskManager {
     const checkbox = target.closest('.task-checkbox') as HTMLElement;
     const editBtn = target.closest('.edit-btn') as HTMLElement;
     const deleteBtn = target.closest('.delete-btn') as HTMLElement;
+    e.stopPropagation();
     
     if (taskItem && !checkbox && !editBtn && !deleteBtn) {
       // Select task when clicking on task item (not on buttons)

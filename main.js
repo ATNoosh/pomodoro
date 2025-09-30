@@ -148,6 +148,10 @@ function saveDbToDisk() {
   const binaryArray = db.export();
   const buffer = Buffer.from(binaryArray);
   fs.writeFileSync(dbPath, buffer);
+  try {
+    const stat = fs.statSync(dbPath);
+    console.log('DB flushed to disk:', dbPath, 'size=', stat.size, 'mtime=', stat.mtime.toISOString());
+  } catch {}
 }
 
 function exec(sql) {
@@ -212,6 +216,7 @@ async function initSqlDatabase() {
       completed INTEGER NOT NULL DEFAULT 0,
       createdAt TEXT NOT NULL,
       pomodoros INTEGER NOT NULL DEFAULT 0,
+      targetPomodoros INTEGER,
       dueDate TEXT
     );
     CREATE TABLE IF NOT EXISTS history(
@@ -226,6 +231,19 @@ async function initSqlDatabase() {
       value TEXT NOT NULL
     );
   `);
+
+  // Ensure schema migrations for existing DBs
+  try {
+    const cols = all('PRAGMA table_info(tasks)');
+    const hasTarget = cols.some(c => String(c.name) === 'targetPomodoros');
+    if (!hasTarget) {
+      exec('ALTER TABLE tasks ADD COLUMN targetPomodoros INTEGER');
+      console.log('Added missing column tasks.targetPomodoros');
+      saveDbToDisk();
+    }
+  } catch (e) {
+    console.warn('Schema check failed:', e);
+  }
 
   // Migration from JSON if DB is empty
   const countTasks = Number(getScalar('SELECT COUNT(1) AS c FROM tasks')) || 0;
@@ -298,7 +316,7 @@ ipcMain.handle('load-data', async () => {
   try {
     if (db) {
       console.log('Loading data from sql.js at', dbPath);
-      const tasks = all('SELECT id, text, completed, createdAt, pomodoros, dueDate FROM tasks ORDER BY createdAt ASC')
+      const tasks = all('SELECT id, text, completed, createdAt, pomodoros, targetPomodoros, dueDate FROM tasks ORDER BY createdAt ASC')
         .map(t => ({ ...t, completed: !!t.completed }));
       const settingsRows = all('SELECT key, value FROM settings');
       const settings = {};
@@ -328,23 +346,28 @@ ipcMain.handle('save-data', async (event, data) => {
       console.log('Saving data to sql.js at', dbPath);
       db.run('BEGIN');
       try {
-        run('DELETE FROM tasks');
+        // Upsert tasks instead of full delete to avoid transient multi-delete effects
+        exec('CREATE TABLE IF NOT EXISTS tasks_tmp(id INTEGER PRIMARY KEY, text TEXT, completed INTEGER, createdAt TEXT, pomodoros INTEGER, targetPomodoros INTEGER, dueDate TEXT)');
+        run('DELETE FROM tasks_tmp');
         if (Array.isArray(data.tasks)) {
-          const insertTask = db.prepare('INSERT INTO tasks(id, text, completed, createdAt, pomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @dueDate)');
+          const insertTaskTmp = db.prepare('INSERT INTO tasks_tmp(id, text, completed, createdAt, pomodoros, targetPomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @targetPomodoros, @dueDate)');
           for (const t of data.tasks) {
-            insertTask.bind({
+            insertTaskTmp.bind({
               '@id': t.id,
               '@text': t.text || '',
               '@completed': t.completed ? 1 : 0,
               '@createdAt': t.createdAt || new Date().toISOString(),
               '@pomodoros': t.pomodoros || 0,
+              '@targetPomodoros': t.targetPomodoros ?? null,
               '@dueDate': t.dueDate || null
             });
-            insertTask.step();
-            insertTask.reset();
+            insertTaskTmp.step();
+            insertTaskTmp.reset();
           }
-          insertTask.free();
+          insertTaskTmp.free();
         }
+        exec('DELETE FROM tasks');
+        exec('INSERT INTO tasks SELECT * FROM tasks_tmp');
         run('DELETE FROM settings');
         if (data.settings) {
           const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(@key, @value)');
@@ -372,6 +395,8 @@ ipcMain.handle('save-data', async (event, data) => {
         }
         db.run('COMMIT');
         saveDbToDisk();
+        // Extra sync to ensure OS flush finished before returning
+        try { fs.closeSync(fs.openSync(dbPath, 'r')); } catch {}
         return true;
       } catch (e) {
         db.run('ROLLBACK');
@@ -386,6 +411,20 @@ ipcMain.handle('save-data', async (event, data) => {
     console.error('Error saving data:', error);
     return false;
   }
+});
+
+// Utility: report DB path
+ipcMain.handle('get-db-path', async () => {
+  return { path: dbPath, exists: fs.existsSync(dbPath) };
+});
+
+// Utility: force flush DB to disk
+ipcMain.handle('flush-db', async () => {
+  if (db) {
+    saveDbToDisk();
+    return true;
+  }
+  return false;
 });
 
 // Export data

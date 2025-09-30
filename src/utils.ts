@@ -94,7 +94,9 @@ export class Utils {
   
   // Generate unique ID
   static generateId(): number {
-    return Date.now();
+    // Combine timestamp with a small random shard to avoid collisions on rapid inserts
+    const rand = Math.floor(Math.random() * 1024); // 10 bits of randomness
+    return (Date.now() << 10) ^ rand;
   }
   
   // Validate task text
