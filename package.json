@@ -41,9 +41,11 @@
       "!node_modules",
       "!dist"
     ],
+    "forceCodeSigning": false,
     "win": {
-      "target": "portable",
-      "icon": "assets/icon.ico"
+      "target": "dir",
+      "icon": "assets/icon.ico",
+      "sign": false
     },
     "mac": {
       "target": "dmg",
@@ -62,7 +64,6 @@
     }
   },
   "dependencies": {
-    "better-sqlite3": "^12.4.1",
     "sql.js": "^1.13.0"
   }
 }
