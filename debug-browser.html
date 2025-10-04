@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Browser</title>
+</head>
+<body>
+    <h1>Debug Browser</h1>
+    <p>Press any key to test...</p>
+    <div id="output"></div>
+    
+    <script>
+        console.log('Debug script loaded');
+        
+        document.addEventListener('keydown', (e) => {
+            console.log('Key pressed:', e.key);
+            document.getElementById('output').innerHTML += `<p>Key pressed: ${e.key}</p>`;
+        });
+        
+        // Test if we can access the main app
+        setTimeout(() => {
+            if (window.pomodoroApp) {
+                console.log('PomodoroApp found:', window.pomodoroApp);
+            } else {
+                console.log('PomodoroApp not found');
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

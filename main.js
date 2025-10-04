@@ -44,6 +44,7 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
   }
+  
 
   // Handle window closed
   mainWindow.on('closed', () => {
@@ -109,7 +110,6 @@ function createOverlayWindow() {
 }
 
 ipcMain.handle('toggle-overlay', () => {
-  console.log('toggle-overlay received');
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (overlayWindow.isVisible()) {
       overlayWindow.hide();
@@ -150,7 +150,6 @@ function saveDbToDisk() {
   fs.writeFileSync(dbPath, buffer);
   try {
     const stat = fs.statSync(dbPath);
-    console.log('DB flushed to disk:', dbPath, 'size=', stat.size, 'mtime=', stat.mtime.toISOString());
   } catch {}
 }
 
@@ -202,10 +201,8 @@ async function initSqlDatabase() {
   if (fs.existsSync(dbPath)) {
     const fileBuffer = fs.readFileSync(dbPath);
     db = new SQL.Database(new Uint8Array(fileBuffer));
-    console.log('sql.js DB loaded from', dbPath);
   } else {
     db = new SQL.Database();
-    console.log('sql.js DB created in memory');
   }
 
   exec(`
@@ -238,7 +235,6 @@ async function initSqlDatabase() {
     const hasTarget = cols.some(c => String(c.name) === 'targetPomodoros');
     if (!hasTarget) {
       exec('ALTER TABLE tasks ADD COLUMN targetPomodoros INTEGER');
-      console.log('Added missing column tasks.targetPomodoros');
       saveDbToDisk();
     }
   } catch (e) {
@@ -294,7 +290,6 @@ async function initSqlDatabase() {
         }
         db.run('COMMIT');
         saveDbToDisk();
-        console.log('Migrated data from JSON to sql.js DB');
       } catch (e) {
         db.run('ROLLBACK');
         throw e;
@@ -315,7 +310,6 @@ app.whenReady().then(async () => {
 ipcMain.handle('load-data', async () => {
   try {
     if (db) {
-      console.log('Loading data from sql.js at', dbPath);
       const tasks = all('SELECT id, text, completed, createdAt, pomodoros, targetPomodoros, dueDate FROM tasks ORDER BY createdAt ASC')
         .map(t => ({ ...t, completed: !!t.completed }));
       const settingsRows = all('SELECT key, value FROM settings');
@@ -328,7 +322,6 @@ ipcMain.handle('load-data', async () => {
     }
     // Fallback to JSON
     if (fs.existsSync(dataPath)) {
-      console.log('Loading data from JSON fallback at', dataPath);
       const data = fs.readFileSync(dataPath, 'utf8');
       return JSON.parse(data);
     }
@@ -343,7 +336,6 @@ ipcMain.handle('load-data', async () => {
 ipcMain.handle('save-data', async (event, data) => {
   try {
     if (db) {
-      console.log('Saving data to sql.js at', dbPath);
       db.run('BEGIN');
       try {
         // Upsert tasks instead of full delete to avoid transient multi-delete effects

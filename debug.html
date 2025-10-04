@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug Pomodoro App</title>
+</head>
+<body>
+    <h1>Debug Pomodoro App</h1>
+    <div id="debug-info"></div>
+    
+    <script type="module">
+        const debugInfo = document.getElementById('debug-info');
+        
+        try {
+            debugInfo.innerHTML += '<p>✅ HTML loaded successfully</p>';
+            
+            // Test if dist/index.js exists
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = 'dist/index.js';
+            script.onload = () => {
+                debugInfo.innerHTML += '<p>✅ dist/index.js loaded successfully</p>';
+            };
+            script.onerror = () => {
+                debugInfo.innerHTML += '<p>❌ Failed to load dist/index.js</p>';
+            };
+            document.head.appendChild(script);
+            
+        } catch (error) {
+            debugInfo.innerHTML += `<p>❌ Error: ${error.message}</p>`;
+        }
+    </script>
+</body>
+</html>

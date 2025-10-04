@@ -12,7 +12,9 @@ export class KeyboardManager {
   
   // Setup all keyboard event listeners
   private setupKeyboardShortcuts(): void {
-    if (KeyboardManager.listenersBound) return;
+    if (KeyboardManager.listenersBound) {
+      return;
+    }
     document.addEventListener('keydown', (e) => {
       this.handleKeyPress(e);
     });
@@ -35,7 +37,6 @@ export class KeyboardManager {
       }
     }
     
-    console.log('Key pressed:', e.key);
     
     // Timer controls
     this.handleTimerShortcuts(e);
@@ -81,7 +82,6 @@ export class KeyboardManager {
   private handleTaskShortcuts(e: KeyboardEvent): void {
     // N: Add New Task
     if (e.key === 'n' || e.key === 'N') {
-      console.log('N key pressed, showing task input');
       e.preventDefault();
       this.app.tasks.showTaskInput();
     }
@@ -97,7 +97,6 @@ export class KeyboardManager {
     if (e.ctrlKey && e.key === 'x') {
       const container = document.getElementById('taskInputContainer');
       if (container && container.style.display === 'block') {
-        console.log('Ctrl+X pressed, hiding task input');
         e.preventDefault();
         this.app.tasks.hideTaskInput();
       }

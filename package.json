@@ -12,7 +12,7 @@
     "dev-safe": "npm run build && set ELECTRON_DISABLE_GPU=1 && electron . --dev",
     "dev:watch": "tsc --watch & electron . --dev",
     "dist": "npm run build && electron-builder --publish=never",
-    "dist-portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && electron-builder --win portable --publish=never"
+    "dist-portable": "npm run build && set CSC_IDENTITY_AUTO_DISCOVERY=false && set ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES=true && electron-builder --win dir --publish=never --config.win.sign=false"
   },
   "keywords": [
     "pomodoro",
@@ -37,14 +37,18 @@
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!node_modules",
-      "!dist"
+      "dist/**/*",
+      "main.js",
+      "preload.js",
+      "index.html",
+      "overlay.html",
+      "styles.css",
+      "package.json",
+      "node_modules/sql.js/dist/**/*"
     ],
     "forceCodeSigning": false,
     "win": {
       "target": "dir",
-      "icon": "assets/icon.ico",
       "sign": false
     },
     "mac": {

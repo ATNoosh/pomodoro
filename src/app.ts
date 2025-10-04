@@ -53,9 +53,7 @@ export class PomodoroApp {
   
   // Initialize the application
   async init(): Promise<void> {
-    console.log('App initializing...');
     await this.dataManager.loadData();
-    console.log('Data loaded, setting up UI...');
     
     // Wait for DOM to be fully ready
     if (document.readyState === 'loading') {
@@ -68,7 +66,6 @@ export class PomodoroApp {
         
         // Ensure tasks are rendered after everything is loaded
         setTimeout(() => {
-          console.log('Final renderTasks call...');
           this.tasks.render();
         }, 200);
       });
@@ -81,7 +78,6 @@ export class PomodoroApp {
       
       // Ensure tasks are rendered after everything is loaded
       setTimeout(() => {
-        console.log('Final renderTasks call...');
         this.tasks.render();
       }, 200);
     }
@@ -360,8 +356,5 @@ export class PomodoroApp {
   }
 }
 
-// Initialize the app when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-  window.pomodoroApp = new PomodoroApp();
-  window.pomodoroApp.init();
-});
+// Make PomodoroApp available globally
+(window as any).PomodoroApp = PomodoroApp;
