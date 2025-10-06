@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, screen, powerSaveBlocker } = require('electron');
 const path = require('path');
 const fs = require('fs');
 // Use sql.js (WASM) instead of native better-sqlite3 to avoid build toolchain
@@ -26,7 +26,8 @@ function createWindow() {
       contextIsolation: true,
       enableRemoteModule: false,
       preload: path.join(__dirname, 'preload.js'),
-      hardwareAcceleration: false
+      hardwareAcceleration: false,
+      backgroundThrottling: false
     },
     icon: path.join(__dirname, 'assets', 'icon.png'),
     show: false
@@ -58,8 +59,24 @@ app.disableHardwareAcceleration();
 // App event listeners
 app.whenReady().then(createWindow);
 
+// Keep the app active to avoid timer throttling when in background
+let powerSaveBlockerId = null;
+app.whenReady().then(() => {
+  try {
+    if (!powerSaveBlockerId || !powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+      powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+    }
+  } catch {}
+});
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
+    try {
+      if (powerSaveBlockerId && powerSaveBlocker.isStarted(powerSaveBlockerId)) {
+        powerSaveBlocker.stop(powerSaveBlockerId);
+        powerSaveBlockerId = null;
+      }
+    } catch {}
     app.quit();
   }
 });
@@ -76,8 +93,8 @@ function createOverlayWindow() {
     return overlayWindow;
   }
   overlayWindow = new BrowserWindow({
-    width: 160,
-    height: 160,
+    width: screen.getPrimaryDisplay().workAreaSize.width,
+    height: 30,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -98,8 +115,7 @@ function createOverlayWindow() {
   overlayWindow.loadFile('overlay.html');
   try {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-    const winBounds = overlayWindow.getBounds();
-    overlayWindow.setPosition(width - winBounds.width - 20, height - winBounds.height - 60);
+    overlayWindow.setPosition(0, 0);
   } catch {}
   overlayWindow.once('ready-to-show', () => {
     if (overlayWindow && !overlayWindow.isDestroyed()) {
@@ -342,21 +358,43 @@ ipcMain.handle('save-data', async (event, data) => {
         exec('CREATE TABLE IF NOT EXISTS tasks_tmp(id INTEGER PRIMARY KEY, text TEXT, completed INTEGER, createdAt TEXT, pomodoros INTEGER, targetPomodoros INTEGER, dueDate TEXT)');
         run('DELETE FROM tasks_tmp');
         if (Array.isArray(data.tasks)) {
+          const selectExisting = db.prepare('SELECT pomodoros, targetPomodoros, dueDate FROM tasks WHERE id = @id');
           const insertTaskTmp = db.prepare('INSERT INTO tasks_tmp(id, text, completed, createdAt, pomodoros, targetPomodoros, dueDate) VALUES(@id, @text, @completed, @createdAt, @pomodoros, @targetPomodoros, @dueDate)');
           for (const t of data.tasks) {
+            // Read existing values to avoid accidental resets when renderer omits fields
+            let existingPomodoros = 0;
+            let existingTarget = null;
+            let existingDue = null;
+            try {
+              selectExisting.bind({ '@id': t.id });
+              if (selectExisting.step()) {
+                const row = selectExisting.getAsObject();
+                existingPomodoros = typeof row.pomodoros === 'number' ? row.pomodoros : (parseInt(String(row.pomodoros || '0'), 10) || 0);
+                existingTarget = row.targetPomodoros ?? null;
+                existingDue = row.dueDate ?? null;
+              }
+            } finally {
+              selectExisting.reset();
+            }
+
+            const nextPomodoros = (typeof t.pomodoros === 'number' && !isNaN(t.pomodoros)) ? t.pomodoros : existingPomodoros;
+            const nextTarget = (typeof t.targetPomodoros === 'number' && !isNaN(t.targetPomodoros)) ? t.targetPomodoros : existingTarget;
+            const nextDue = (typeof t.dueDate === 'string' && t.dueDate) ? t.dueDate : existingDue;
+
             insertTaskTmp.bind({
               '@id': t.id,
               '@text': t.text || '',
               '@completed': t.completed ? 1 : 0,
               '@createdAt': t.createdAt || new Date().toISOString(),
-              '@pomodoros': t.pomodoros || 0,
-              '@targetPomodoros': t.targetPomodoros ?? null,
-              '@dueDate': t.dueDate || null
+              '@pomodoros': nextPomodoros,
+              '@targetPomodoros': nextTarget,
+              '@dueDate': nextDue
             });
             insertTaskTmp.step();
             insertTaskTmp.reset();
           }
           insertTaskTmp.free();
+          selectExisting.free();
         }
         exec('DELETE FROM tasks');
         exec('INSERT INTO tasks SELECT * FROM tasks_tmp');
