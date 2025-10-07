@@ -112,6 +112,10 @@ function createOverlayWindow() {
   });
   overlayWindow.setAlwaysOnTop(true, 'screen-saver');
   overlayWindow.setVisibleOnAllWorkspaces(true);
+  // Make overlay click-through by default so it doesn't block clicks
+  try {
+    overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+  } catch {}
   overlayWindow.loadFile('overlay.html');
   try {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -137,6 +141,15 @@ ipcMain.handle('toggle-overlay', () => {
   const win = createOverlayWindow();
   if (win && !win.isDestroyed()) {
     win.showInactive();
+  }
+});
+
+// Allow renderer to toggle overlay mouse interactivity (drag mode)
+ipcMain.handle('overlay-set-ignore', (_event, ignore) => {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    try {
+      overlayWindow.setIgnoreMouseEvents(!!ignore, { forward: true });
+    } catch {}
   }
 });
 
@@ -396,8 +409,28 @@ ipcMain.handle('save-data', async (event, data) => {
           insertTaskTmp.free();
           selectExisting.free();
         }
+        // Replace tasks using explicit column mapping to avoid column-order issues
         exec('DELETE FROM tasks');
-        exec('INSERT INTO tasks SELECT * FROM tasks_tmp');
+        exec(`
+          INSERT INTO tasks(
+            id,
+            text,
+            completed,
+            createdAt,
+            pomodoros,
+            targetPomodoros,
+            dueDate
+          )
+          SELECT
+            id,
+            text,
+            completed,
+            createdAt,
+            pomodoros,
+            targetPomodoros,
+            dueDate
+          FROM tasks_tmp
+        `);
         run('DELETE FROM settings');
         if (data.settings) {
           const insertSetting = db.prepare('INSERT INTO settings(key, value) VALUES(@key, @value)');

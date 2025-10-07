@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Overlay and timer events
   toggleOverlay: () => ipcRenderer.invoke('toggle-overlay'),
+  overlaySetIgnore: (ignore) => ipcRenderer.invoke('overlay-set-ignore', ignore),
   timerTick: (state) => ipcRenderer.send('timer-tick', state),
   onTimerUpdate: (callback) => ipcRenderer.on('timer-update', (_e, state) => callback(state)),
   

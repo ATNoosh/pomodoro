@@ -150,6 +150,9 @@ export class TaskManager {
         <button class="delete-btn" data-id="${task.id}" title="Delete task">
           <i class="fas fa-trash"></i>
         </button>
+        <button class="tomorrow-btn" data-id="${task.id}" title="Move to tomorrow">
+          <i class="fas fa-arrow-right"></i>
+        </button>
       </div>
     `;
     
@@ -299,9 +302,13 @@ export class TaskManager {
     const checkbox = target.closest('.task-checkbox') as HTMLElement;
     const editBtn = target.closest('.edit-btn') as HTMLElement;
     const deleteBtn = target.closest('.delete-btn') as HTMLElement;
+    const tomorrowBtn = target.closest('.tomorrow-btn') as HTMLElement;
     e.stopPropagation();
+    if (typeof (e as any).preventDefault === 'function') {
+      (e as any).preventDefault();
+    }
     
-    if (taskItem && !checkbox && !editBtn && !deleteBtn) {
+    if (taskItem && !checkbox && !editBtn && !deleteBtn && !tomorrowBtn) {
       // Select task when clicking on task item (not on buttons)
       const id = parseInt(taskItem.dataset.id || '0');
       this.selectTask(id);
@@ -316,6 +323,16 @@ export class TaskManager {
       if (Utils.confirm('Are you sure you want to delete this task?')) {
         this.deleteTask(id);
       }
+    } else if (tomorrowBtn) {
+      const id = parseInt(tomorrowBtn.dataset.id || '0');
+      console.log('Tomorrow button clicked for task id', id);
+      try { tomorrowBtn.setAttribute('disabled', 'true'); } catch {}
+      this.moveTaskToTomorrow(id);
+      // brief visual feedback
+      try {
+        tomorrowBtn.title = 'Moved to tomorrow';
+        setTimeout(() => { try { tomorrowBtn.removeAttribute('disabled'); tomorrowBtn.title = 'Move to tomorrow'; } catch {} }, 600);
+      } catch {}
     }
   }
   
@@ -357,8 +374,39 @@ export class TaskManager {
     try { return new Date(iso).toISOString().slice(0, 10); } catch { return this.getSelectedDateISO(); }
   }
 
+  private addDaysISO(iso: string, days: number): string {
+    // Parse as UTC components to avoid timezone shifts
+    const [y, m, d] = iso.split('-').map((s) => parseInt(s, 10));
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    const yy = dt.getUTCFullYear();
+    const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getUTCDate()).padStart(2, '0');
+    return `${yy}-${mm}-${dd}`;
+  }
+
   // Allow external to set desired due date before add/edit
   setNextDueDate(iso: string): void {
     this.pendingDueDateISO = iso;
+  }
+
+  // Move a task's due date to tomorrow and keep selection sane
+  moveTaskToTomorrow(id: number): void {
+    const task = this.app.data.tasks.find((t: Task) => t.id === id);
+    if (!task) return;
+    const baseISO = (task.dueDate || this.dateFromISO(task.createdAt));
+    console.log('moveTaskToTomorrow baseISO', baseISO, 'current dueDate', task.dueDate);
+    const tomorrowISO = this.addDaysISO(baseISO, 1);
+    task.dueDate = tomorrowISO;
+    console.log('moveTaskToTomorrow set dueDate ->', task.dueDate);
+    this.app.saveData();
+    // If the task moves out of current view, normalize selection to a remaining visible task
+    const selectedISO = this.getSelectedDateISO();
+    if ((task.dueDate || this.dateFromISO(task.createdAt)) !== selectedISO) {
+      const visible = this.app.data.tasks.filter((t: Task) => (t.dueDate || this.dateFromISO(t.createdAt)) === selectedISO);
+      this.selectedTaskId = visible.length ? visible[visible.length - 1].id : null;
+    }
+    this.render();
+    this.app.stats.update();
   }
 }

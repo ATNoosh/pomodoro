@@ -60,6 +60,7 @@
       const progressBar = document.getElementById('progressBar');
       const timeEl = document.getElementById('overlayTime');
       const modeEl = document.getElementById('overlayMode');
+      let dragMode = false;
       
       if (window.electronAPI && window.electronAPI.onTimerUpdate) {
         window.electronAPI.onTimerUpdate((state) => {
@@ -75,6 +76,18 @@
           if (modeEl) modeEl.textContent = modeLabel(state.currentMode);
         });
       }
+
+      // Toggle drag mode: Ctrl+Alt+D to allow moving the bar (capture clicks), toggle again to return to click-through
+      document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.altKey && (e.key === 'd' || e.key === 'D')) {
+          dragMode = !dragMode;
+          try {
+            if (window.electronAPI && typeof window.electronAPI.overlaySetIgnore === 'function') {
+              window.electronAPI.overlaySetIgnore(!dragMode);
+            }
+          } catch {}
+        }
+      });
       
       function formatTime(sec) {
         const m = Math.floor(sec / 60).toString().padStart(2, '0');
